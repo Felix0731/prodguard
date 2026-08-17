@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="ShipGuard stops AI coding agents from disabling your paywall, your auth and your database security. Zero dependencies.">
+<meta property="og:title" content="ShipGuard">
+<meta property="og:description" content="Your AI agent can write code. It should not be able to quietly turn off your paywall and deploy it.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128737;</text></svg>">
+<title>ShipGuard</title>
+<style>
+  :root {
+    --paper: #F5F4F1;
+    --surface: #FFFFFF;
+    --ink: #1A1714;
+    --muted: #6E675F;
+    --rule: #DEDBD4;
+    --accent: #C8322A;
+    --amber: #B5730C;
+    --pass: #2F6B4F;
+    --term-bg: #201D1A;
+    --term-ink: #E8E4DC;
+    --term-dim: #8D857A;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+
+    --step--1: clamp(0.78rem, 0.76rem + 0.1vw, 0.83rem);
+    --step-0: clamp(1rem, 0.97rem + 0.15vw, 1.08rem);
+    --step-1: clamp(1.2rem, 1.13rem + 0.35vw, 1.4rem);
+    --step-2: clamp(1.5rem, 1.36rem + 0.7vw, 2rem);
+    --step-3: clamp(2rem, 1.7rem + 1.5vw, 3.1rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #161513;
+      --surface: #1E1D1A;
+      --ink: #F0EEE9;
+      --muted: #9E968B;
+      --rule: #34322D;
+      --accent: #F0564A;
+      --amber: #E39A2B;
+      --pass: #6BBF92;
+      --term-bg: #100F0E;
+      --term-ink: #E8E4DC;
+      --term-dim: #7C7469;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #161513;
+    --surface: #1E1D1A;
+    --ink: #F0EEE9;
+    --muted: #9E968B;
+    --rule: #34322D;
+    --accent: #F0564A;
+    --amber: #E39A2B;
+    --pass: #6BBF92;
+    --term-bg: #100F0E;
+    --term-ink: #E8E4DC;
+    --term-dim: #7C7469;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: var(--step-0);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  /* ---------- stamped header ---------- */
+
+  .stamp {
+    border-bottom: 2px solid var(--ink);
+    padding: 3.5rem 0 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+  }
+
+  .wordmark {
+    font-family: var(--mono);
+    font-size: var(--step-3);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin: 0;
+  }
+
+  .wordmark .guard { color: var(--accent); }
+
+  .stamp-meta {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.9;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .lede {
+    font-size: var(--step-1);
+    line-height: 1.45;
+    text-wrap: balance;
+    margin: 1.75rem 0 0;
+    max-width: 34ch;
+  }
+
+  .lede strong { font-weight: 600; }
+
+  /* ---------- install line ---------- */
+
+  .install {
+    margin: 2rem 0 0;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    font-family: var(--mono);
+    font-size: var(--step-0);
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+  }
+
+  .install .prompt { color: var(--accent); user-select: none; }
+
+  .cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 1.05em;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    animation: blink 1.15s step-end infinite;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; }
+  }
+
+  /* ---------- section scaffolding ---------- */
+
+  section { margin-top: 4rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+    display: block;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: var(--step-2);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    margin: 0 0 1.25rem;
+    text-wrap: balance;
+  }
+
+  p { margin: 0 0 1.1rem; max-width: 65ch; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ---------- terminal ---------- */
+
+  figure { margin: 0; }
+
+  .terminal {
+    background: var(--term-bg);
+    color: var(--term-ink);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.75;
+    padding: 1.4rem 1.5rem;
+    overflow-x: auto;
+    border-left: 3px solid var(--accent);
+  }
+
+  .terminal pre { margin: 0; white-space: pre; }
+  .terminal .dim { color: var(--term-dim); }
+  .terminal .crit { color: #F0564A; font-weight: 600; }
+  .terminal .high { color: #E39A2B; font-weight: 600; }
+  .terminal .path { color: #8FB8D8; }
+  .terminal .code { color: var(--term-ink); }
+
+  figcaption {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    margin-top: 0.75rem;
+    line-height: 1.6;
+  }
+
+  .verdict {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: var(--accent);
+    color: #FFF6F4;
+    padding: 0.35rem 0.7rem;
+    margin-top: 1.25rem;
+  }
+
+  /* ---------- checks table ---------- */
+
+  .checks {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+  }
+
+  .checks th {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    font-weight: 400;
+    text-align: left;
+    padding: 0 0 0.6rem;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .checks td {
+    padding: 0.85rem 1rem 0.85rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+
+  .checks td.sev {
+    width: 1px;
+    padding-right: 1rem;
+    white-space: nowrap;
+  }
+
+  .sev-tag {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-left: 3px solid currentColor;
+    padding-left: 0.5rem;
+    display: block;
+  }
+
+  .sev-tag.c { color: var(--accent); }
+  .sev-tag.h { color: var(--amber); }
+
+  .checks code {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--muted);
+    display: block;
+    margin-top: 0.2rem;
+  }
+
+  /* ---------- code blocks ---------- */
+
+  .snippet {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.8;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    margin: 0 0 1.1rem;
+  }
+
+  .snippet .comment { color: var(--muted); }
+
+  /* ---------- limits ---------- */
+
+  .limits {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .limits li {
+    padding-left: 1.6rem;
+    position: relative;
+    max-width: 65ch;
+  }
+
+  .limits li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: var(--mono);
+  }
+
+  /* ---------- footer ---------- */
+
+  footer {
+    margin-top: 5rem;
+    padding-top: 1.25rem;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="stamp">
+    <h1 class="wordmark">Ship<span class="guard">Guard</span></h1>
+    <div class="stamp-meta">
+      v0.1.0<br>
+      0 dependencies · Node ≥18<br>
+      MIT
+    </div>
+  </header>
+
+  <p class="lede">
+    Your AI agent can write code. It should not be able to <strong>quietly turn off your paywall</strong> and deploy it.
+  </p>
+
+  <div class="install">
+    <span class="prompt">$</span><span>npx shipguard check</span><span class="cursor" aria-hidden="true"></span>
+  </div>
+
+  <section>
+    <span class="eyebrow">Why this exists</span>
+    <h2>It already happened to me</h2>
+    <p>
+      I let an AI agent work on my production SaaS. It disabled the payment paywall, turned off email
+      verification on the live database, and deployed both.
+    </p>
+    <p>
+      I found out two weeks later.
+    </p>
+    <p>
+      Nothing caught it. Not the agent, not code review — I <em>was</em> the code review, and I approved the
+      diff without understanding what it did. The tests passed, because there were no tests on billing.
+      The app looked fine, because from the outside a broken paywall looks exactly like a working one.
+    </p>
+  </section>
+
+  <section>
+    <span class="eyebrow">Real output</span>
+    <h2>Scanning the app it happened to</h2>
+    <figure>
+      <div class="terminal">
+<pre><span class="dim">$ npx shipguard check ~/my-app</span>
+
+  ShipGuard  <span class="dim">·  77 files scanned</span>
+
+  <span class="crit">🔴 CRITICAL</span>  Paid features are unlocked for everyone  <span class="dim">paywall-disabled</span>
+
+     Your paywall is hardcoded open. Every visitor gets the paid
+     product for free, and your Stripe subscriptions stop meaning
+     anything.
+
+     <span class="path">src/pages/Dashboard.jsx:20</span>
+       <span class="code">const locked = false</span>
+       <span class="dim">→ `locked` is pinned to `false` instead of being derived</span>
+       <span class="dim">  from the user's subscription.</span>
+     <span class="path">src/pages/QuoteDetail.jsx:169</span>
+       <span class="code">const locked = false</span>
+
+  <span class="high">🟠 HIGH</span>  Email verification is turned off  <span class="dim">email-verification-disabled</span>
+
+     <span class="path">supabase/config.toml:226</span>
+       <span class="code">enable_confirmations = false</span>
+
+  Result: <span class="crit">2 critical</span> <span class="dim">·</span> <span class="high">2 high</span></pre>
+      </div>
+      <figcaption>Verbatim output from the app this happened to, with the path anonymized. Exit code 1, so CI stops.</figcaption>
+    </figure>
+    <div class="verdict">Blocking · exit 1</div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Eight checks</span>
+    <h2>Only things that cost money or leak data</h2>
+    <table class="checks">
+      <thead>
+        <tr><th class="sev">Severity</th><th>What it catches</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>Your paid features are unlocked for everyone
+            <code>paywall-disabled</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>Anyone can POST a fake payment and unlock an account
+            <code>stripe-webhook-unverified</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>Your admin database key can reach the browser
+            <code>service-role-key-exposed</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>Row Level Security is off — users can read each other's rows
+            <code>rls-disabled</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>A live Stripe or API key is sitting in your source tree
+            <code>live-secret-committed</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag h">High</span></td>
+          <td>A table was created and RLS was never turned on for it
+            <code>rls-never-enabled</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag h">High</span></td>
+          <td>Accounts go live without proving they own the email
+            <code>email-verification-disabled</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag h">High</span></td>
+          <td>A migration drops or empties a table
+            <code>destructive-migration</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <span class="eyebrow">Put it in front of the agent</span>
+    <h2>One command wires it into CI</h2>
+    <div class="snippet">$ npx shipguard init
+
+  ✓ wrote .shipguardrc.json
+  ✓ wrote .github/workflows/shipguard.yml</div>
+    <p>
+      That workflow runs on every pull request — <strong>including the ones your agent opens</strong>. Dangerous
+      changes stop merging instead of stopping your revenue.
+    </p>
+    <p>Want it earlier, before a commit even exists:</p>
+    <div class="snippet"><span class="comment"># .husky/pre-commit</span>
+npx shipguard check</div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Reports for humans</span>
+    <h2>No CWE numbers</h2>
+    <p>
+      Every finding is written so that someone who can build an app can act on it. Not
+      <span style="font-family: var(--mono); font-size: 0.85em;">CWE-862: Missing Authorization</span> — instead:
+      <em>“Anyone who knows another user's ID may be able to read their data.”</em>
+    </p>
+    <p>
+      The people breaking production with agents right now are frequently not senior engineers. A warning
+      they can't decode is a warning they'll skip.
+    </p>
+  </section>
+
+  <section>
+    <span class="eyebrow">Honest limits</span>
+    <h2>What it is not</h2>
+    <ul class="limits">
+      <li><strong>Not a linter.</strong> It ignores style entirely and only looks for changes that cost money or leak data.</li>
+      <li><strong>Not a dashboard.</strong> Nothing to sign up for. No data leaves your machine.</li>
+      <li><strong>Not a guarantee.</strong> A clean run means these specific checks didn't fire — not that your app is secure.</li>
+      <li><strong>Pattern matching, not full program analysis.</strong> It will miss creative ways of breaking the same things, and it can be wrong. When it's wrong, add an allow entry and move on.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>ShipGuard · MIT</span>
+    <span>Built after an agent shipped a broken paywall</span>
+  </footer>
+
+</div>
+</body>
+</html>

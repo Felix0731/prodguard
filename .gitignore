@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+*.log
+*.tgz
+
+# Vercel local project link (contains project + org ids, not needed in git)
+.vercel/
+
+# Generated at test time; a literal sk_live_ string trips GitHub secret scanning
+test/fixtures/bad/src/pages/keys.js

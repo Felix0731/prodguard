@@ -1,0 +1,43 @@
+{
+  "name": "shipguard",
+  "version": "0.1.0",
+  "description": "Stops AI coding agents from disabling your paywall, your auth, and your database security.",
+  "license": "MIT",
+  "author": "Felix LeBlanc",
+  "homepage": "https://shipguard-ten.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Felix0731/shipguard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Felix0731/shipguard/issues"
+  },
+  "type": "module",
+  "bin": {
+    "shipguard": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "node bin/cli.js check",
+    "test": "node test/run.js"
+  },
+  "keywords": [
+    "ai-agents",
+    "claude-code",
+    "cursor",
+    "supabase",
+    "stripe",
+    "rls",
+    "security",
+    "guardrails",
+    "ci"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
