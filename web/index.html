@@ -497,8 +497,10 @@
   </section>
 
   <section>
-    <span class="eyebrow">Eight checks</span>
+    <span class="eyebrow">Nine checks</span>
     <h2>Only things that cost money or leak data</h2>
+    <p>Every one of these is a way an AI agent has actually broken a real app. Rule nine exists because
+      I nearly saved my own npm recovery codes into this repository.</p>
     <table class="checks">
       <thead>
         <tr><th class="sev">Severity</th><th>What it catches</th></tr>
@@ -528,6 +530,11 @@
           <td class="sev"><span class="sev-tag c">Critical</span></td>
           <td>A live Stripe or API key is sitting in your source tree
             <code>live-secret-committed</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>A recovery-codes or credentials file is sitting in the repo
+            <code>credential-file-committed</code></td>
         </tr>
         <tr>
           <td class="sev"><span class="sev-tag h">High</span></td>
