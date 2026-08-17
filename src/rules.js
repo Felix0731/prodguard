@@ -20,6 +20,18 @@ function isMigration(rel) {
 // A term mentioned in a comment or inside a regex literal is talking *about*
 // the dangerous thing, not doing it. Tools that can't tell the difference get
 // uninstalled, so this check earns its keep.
+// Blank out comments, keeping length and newlines so line numbers still match.
+// Without this, a `// TODO: call constructEvent()` comment silences the warning
+// about the unverified webhook sitting right beneath it — an alarm that goes
+// quiet exactly when someone notices the problem and doesn't fix it.
+export function stripComments(text, sql = false) {
+  const blank = (m) => m.replace(/[^\n]/g, ' ')
+  let out = text.replace(/\/\*[\s\S]*?\*\//g, blank)
+  out = out.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)))
+  if (sql) out = out.replace(/--[^\n]*/g, blank)
+  return out
+}
+
 function isDiscussion(snippet) {
   const s = String(snippet).trim()
   if (/^(\/\/|\/\*|\*|#|--)/.test(s)) return true
@@ -43,15 +55,28 @@ rule({
     'and your Stripe subscriptions stop meaning anything.',
   run(files) {
     const found = []
-    const GATE =
-      /(?:const|let|var)\s+(locked|isLocked|hasAccess|isPaid|isPro|isPremium|hasActiveSub|hasSubscription|isSubscribed|canAccess|isTrialExpired)\s*=\s*(true|false)\b/g
+    // Three shapes, because a gate is rarely a bare `const x = false`:
+    //   const locked = false                  declaration (optionally TS-typed)
+    //   const [locked, setLocked] = useState(false)   React state
+    //   { hasAccess: true }                   config / flags object
+    const N = 'locked|isLocked|hasAccess|isPaid|isPro|isPremium|hasActiveSub|hasSubscription|isSubscribed|canAccess|isTrialExpired'
+    const GATE = new RegExp(
+      `(?:const|let|var)\\s+(${N})\\s*(?::\\s*[A-Za-z_$][\\w$<>\\[\\]|\\s]*?)?=\\s*(true|false)\\b` +
+        `|\\[\\s*(${N})\\s*,\\s*set[A-Za-z_$]\\w*\\s*\\]\\s*=\\s*useState[^(]*\\(\\s*(true|false)\\s*\\)` +
+        `|(?:^|[,{])\\s*(${N})\\s*:\\s*(true|false)\\b`,
+      'gm',
+    )
 
     for (const file of files) {
       if (file.isDoc || isMigration(file.rel)) continue
       for (const hit of matches(file, GATE)) {
         if (isDiscussion(hit.snippet)) continue
-        const name = hit.match[1]
-        const value = hit.match[2]
+        // Whichever alternation matched, the name and value are the two
+        // defined capture groups in that pair.
+        const groups = hit.match.slice(1).filter((g) => g !== undefined)
+        const name = groups[0]
+        const value = groups[1]
+        if (!name || !value) continue
         // `locked = false` opens the gate. `hasAccess = true` does the same
         // thing from the other direction. The inverse pairs are safe defaults.
         const opensGate =
@@ -86,15 +111,16 @@ rule({
     for (const file of files) {
       // Only executable handlers can verify a signature. SQL and config files
       // mentioning "webhook" are documentation, not an endpoint.
-      if (!/\.(js|jsx|ts|tsx|mjs|cjs)$/.test(file.rel)) continue
+      if (!/\.(js|jsx|ts|tsx|mjs|cjs|mts|cts)$/.test(file.rel)) continue
       const looksLikeWebhook =
         /webhook/i.test(file.rel) ||
         /stripe-signature/i.test(file.text) ||
         /STRIPE_WEBHOOK_SECRET/.test(file.text)
       if (!looksLikeWebhook) continue
       if (!/stripe/i.test(file.text)) continue
-      // The only thing that actually authenticates a Stripe webhook.
-      if (/constructEvent(Async)?\s*\(/.test(file.text)) continue
+      // The only thing that actually authenticates a Stripe webhook — and it
+      // has to be code. A comment promising to call it is not a call.
+      if (/constructEvent(Async)?\s*\(/.test(stripComments(file.text))) continue
 
       const anchor =
         [...matches(file, /stripe-signature|STRIPE_WEBHOOK_SECRET|webhook/i)][0] || { line: 1, snippet: '' }
@@ -124,10 +150,11 @@ rule({
   run(files) {
     const found = []
     const PATTERNS = [
-      { re: /email_confirm\s*:\s*true/g, why: 'accounts are being auto-confirmed through the admin API' },
-      { re: /enable_confirmations\s*=\s*false/g, why: 'Supabase config has confirmations disabled' },
+      { re: /["']?email_confirm["']?\s*:\s*true/g, why: 'accounts are being auto-confirmed through the admin API' },
+      { re: /enable_confirmations\s*=\s*false/gi, why: 'Supabase config has confirmations disabled' },
+      { re: /GOTRUE_MAILER_AUTOCONFIRM\s*[=:]\s*["']?true/gi, why: 'GoTrue is set to auto-confirm every signup' },
       { re: /"enable_confirmations"\s*:\s*false/g, why: 'Supabase config has confirmations disabled' },
-      { re: /mailer_autoconfirm\s*[=:]\s*true/g, why: 'Supabase is set to auto-confirm every signup' },
+      { re: /mailer_autoconfirm\s*[=:]\s*["']?true/gi, why: 'Supabase is set to auto-confirm every signup' },
     ]
     for (const file of files) {
       if (file.isDoc) continue
@@ -226,7 +253,7 @@ rule({
   run(files) {
     const sql = files.filter((f) => /\.sql$/.test(f.rel))
     if (!sql.length) return []
-    const allSql = sql.map((f) => f.text).join('\n')
+    const allSql = sql.map((f) => stripComments(f.text, true)).join('\n')
 
     const enabled = new Set()
     for (const m of allSql.matchAll(/ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?([^\s;]+)[\s\S]{0,80}?ENABLE\s+ROW\s+LEVEL\s+SECURITY/gi)) {
@@ -290,7 +317,7 @@ rule({
             file: file.rel,
             line: hit.line,
             snippet: redact(hit.snippet),
-            detail: `${what} found in tracked source.`,
+            detail: `${what} found on disk in this directory. ProdGuard does not read git, so check whether this file is actually committed.`,
           })
         }
       }
@@ -320,12 +347,18 @@ rule({
     const NAME = /(^|\/)[^/]*(recovery[-_. ]?codes?|backup[-_. ]?codes?|2fa[-_. ]?codes?|credentials?|secrets?|private[-_. ]?key)[^/]*\.(txt|csv|json|md|text)$/i
     // ...and actually containing secret-shaped lines, so we don't flag a doc
     // that merely discusses credentials.
-    const SECRETY = /^[0-9a-f]{16,}$|^[A-Za-z0-9+/]{32,}={0,2}$|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY/m
+    // GitHub, Google and npm recovery codes are short dashed alphanumerics —
+    // the previous 16+ hex / 32+ base64 test missed all of them.
+    const SECRETY =
+      /^[0-9a-f]{16,}$|^[A-Za-z0-9+/]{32,}={0,2}$|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY/m
+    const DASHED = /^[A-Za-z0-9]{4,8}-[A-Za-z0-9]{4,8}(-[A-Za-z0-9]{4,8})?$/gm
 
     for (const file of files) {
       if (!NAME.test(file.rel)) continue
       if (/\.example$|\.sample$|\.template$/.test(file.rel)) continue
-      if (!SECRETY.test(file.text)) continue
+      // Two or more code-shaped lines: one is a coincidence, a block is a dump.
+      const dashed = (file.text.match(DASHED) || []).length
+      if (!SECRETY.test(file.text) && dashed < 2) continue
       found.push({
         file: file.rel,
         line: 1,
@@ -355,13 +388,18 @@ rule({
     // The receiver has to be a JWT library. Matching a bare `.decode(` also
     // catches TextDecoder, base64 helpers and stream decoders — none of which
     // are auth, and all of which appear in ordinary code.
-    const DECODE = /\b(?:jwt|jsonWebToken|jsonwebtoken|jose)\s*\.\s*decode\s*\(|\bdecodeJwt\s*\(/g
+    const DECODE =
+      /\b(?:jwt|jsonWebToken|jsonwebtoken|jose)\s*\.\s*decode\s*\(|\bdecodeJwt\s*\(|\bjwt_?[Dd]ecode\s*\(/g
     for (const file of files) {
       if (file.isDoc) continue
-      if (!/\.(js|jsx|ts|tsx|mjs|cjs)$/.test(file.rel)) continue
+      if (!/\.(js|jsx|ts|tsx|mjs|cjs|mts|cts)$/.test(file.rel)) continue
       if (!/jwt|jsonwebtoken|jose/i.test(file.text)) continue
+      // `.verify()` anywhere used to suppress the whole file, so an unrelated
+      // hmac.verify() next to a jwt.decode() hid the bug. Require the verify
+      // to belong to a JWT library.
+      const code = stripComments(file.text)
+      if (/\b(?:jwt|jsonWebToken|jsonwebtoken|jose)\s*\.\s*verify\s*\(|\bjwtVerify\s*\(|\bverifyIdToken\s*\(/.test(code)) continue
       // A file that verifies somewhere is doing the right thing.
-      if (/\.verify\s*\(|jwtVerify\s*\(|verifyIdToken\s*\(/.test(file.text)) continue
       for (const hit of matches(file, DECODE)) {
         if (isDiscussion(hit.snippet)) continue
         found.push({
@@ -389,7 +427,11 @@ rule({
     'Security off.',
   run(files) {
     const found = []
-    const OPEN = /allow\s+(read|write|create|update|delete)[^;:]*:\s*if\s+true\b/gi
+    // `if true` is the obvious form. Firebase's own console "test mode" writes
+    // a time bomb instead, and Realtime Database uses a different syntax
+    // entirely — both are wide open, and both were invisible before.
+    const OPEN =
+      /allow\s+(read|write|create|update|delete)[^;:]*:\s*if\s+(?:true\b|request\.time\s*[<≤]|1\s*==\s*1)|"\.(read|write)"\s*:\s*true/gi
     for (const file of files) {
       if (!/\.rules$|firestore\.rules|storage\.rules|database\.rules\.json/i.test(file.rel)) continue
       for (const hit of matches(file, OPEN)) {
@@ -397,7 +439,9 @@ rule({
           file: file.rel,
           line: hit.line,
           snippet: hit.snippet,
-          detail: `\`allow ${hit.match[1]}: if true\` grants this to every visitor, signed in or not.`,
+          detail: /request\.time/.test(hit.snippet)
+            ? 'This is Firebase\'s "test mode" rule: open to the whole internet until the date passes, then closed to everyone.'
+            : `This grants ${hit.match[1] || hit.match[2] || 'access'} to every visitor, signed in or not.`,
         })
       }
     }
@@ -420,8 +464,9 @@ rule({
     const found = []
     for (const file of files) {
       if (file.isDoc) continue
-      if (!/\.(js|jsx|ts|tsx|mjs|cjs|json|yml|yaml|toml)$/.test(file.rel)) continue
-      const wildcard = /(Access-Control-Allow-Origin["'\s:=,]+\*)|(origin\s*:\s*["']\*["'])/i
+      if (!/\.(js|jsx|ts|tsx|mjs|cjs|mts|cts|json|yml|yaml|toml)$/.test(file.rel)) continue
+      const wildcard =
+        /(Access-Control-Allow-Origin["'\s:=,]+\*)|(origin\s*:\s*["']\*["'])|(origin\s*:\s*true\b)|(Access-Control-Allow-Origin["'\s:=,]+.{0,40}headers\.origin)/i
       const creds = /(Access-Control-Allow-Credentials["'\s:=,]+true)|(credentials\s*:\s*true)/i
       if (!wildcard.test(file.text) || !creds.test(file.text)) continue
       const anchor = [...matches(file, /Access-Control-Allow-Origin|origin\s*:\s*["']\*["']/i)][0] || { line: 1, snippet: '' }
@@ -448,7 +493,8 @@ rule({
     'the data is gone and no amount of redeploying brings it back.',
   run(files) {
     const found = []
-    const DESTRUCTIVE = /\b(DROP\s+TABLE|TRUNCATE\s+(?:TABLE\s+)?|DROP\s+SCHEMA)\s+(?:IF\s+EXISTS\s+)?([^\s;]+)/gi
+    const DESTRUCTIVE =
+      /\b(DROP\s+TABLE|TRUNCATE\s+(?:TABLE\s+)?|DROP\s+SCHEMA|DROP\s+DATABASE)\s+(?:IF\s+EXISTS\s+)?([^\s;]+)|\b(ALTER\s+TABLE)\s+([^\s;]+)[\s\S]{0,40}?DROP\s+COLUMN|\b(DELETE\s+FROM)\s+([^\s;]+)\s*;/gi
     for (const file of files) {
       if (!isMigration(file.rel)) continue
       for (const hit of matches(file, DESTRUCTIVE)) {
@@ -456,7 +502,14 @@ rule({
           file: file.rel,
           line: hit.line,
           snippet: hit.snippet,
-          detail: `\`${hit.match[1].trim().toUpperCase()}\` on \`${hit.match[2]}\`.`,
+          detail: (() => {
+          const g = hit.match.slice(1).filter((x) => x !== undefined)
+          const what = (g[0] || '').trim().toUpperCase()
+          const target = g[1] || ''
+          if (what.startsWith('DELETE')) return `\`DELETE FROM ${target}\` with no WHERE clause empties the table.`
+          if (what.startsWith('ALTER')) return `\`DROP COLUMN\` on \`${target}\` destroys that column's data.`
+          return `\`${what}\` on \`${target}\`.`
+        })(),
         })
       }
     }

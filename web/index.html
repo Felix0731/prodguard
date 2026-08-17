@@ -10,17 +10,19 @@
 <title>ProdGuard</title>
 <style>
   :root {
+    color-scheme: light dark;
     --paper: #F5F4F1;
     --surface: #FFFFFF;
     --ink: #1A1714;
     --muted: #6E675F;
     --rule: #DEDBD4;
     --accent: #C8322A;
-    --amber: #B5730C;
+    --amber: #8F5A08;
     --pass: #2F6B4F;
     --term-bg: #201D1A;
     --term-ink: #E8E4DC;
     --term-dim: #8D857A;
+    --on-accent: #FFF6F4;
 
     --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
@@ -44,7 +46,8 @@
       --pass: #6BBF92;
       --term-bg: #100F0E;
       --term-ink: #E8E4DC;
-      --term-dim: #7C7469;
+      --term-dim: #8A8175;
+      --on-accent: #1A0705;
     }
   }
 
@@ -59,7 +62,8 @@
     --pass: #6BBF92;
     --term-bg: #100F0E;
     --term-ink: #E8E4DC;
-    --term-dim: #7C7469;
+    --term-dim: #8A8175;
+    --on-accent: #1A0705;
   }
 
   * { box-sizing: border-box; }
@@ -304,7 +308,7 @@
     text-transform: uppercase;
     letter-spacing: 0.1em;
     background: var(--accent);
-    color: #FFF6F4;
+    color: var(--on-accent);
     padding: 0.35rem 0.7rem;
     margin-top: 1.25rem;
   }
@@ -365,6 +369,8 @@
   /* ---------- code blocks ---------- */
 
   .snippet {
+    white-space: pre;
+    margin: 0 0 1.1rem;
     font-family: var(--mono);
     font-size: 0.82rem;
     line-height: 1.8;
@@ -417,7 +423,7 @@
   }
 
   a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
-  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 </style>
 </head>
 <body>
@@ -426,7 +432,7 @@
   <header class="stamp">
     <h1 class="wordmark">Prod<span class="guard">Guard</span></h1>
     <div class="stamp-meta">
-      v0.3.1<br>
+      v0.4.0<br>
       0 dependencies · Node ≥18<br>
       MIT
     </div>
@@ -438,49 +444,58 @@
 
   <p class="stack">A read-only command that scans your repo in about a second and fails the build on
     <strong>twelve</strong> ways an AI agent quietly breaks production — across
-    <strong>Supabase</strong>, <strong>Firebase</strong>, <strong>Stripe</strong>, <strong>Next.js</strong>,
-    <strong>Vite</strong> and <strong>Vercel</strong>.</p>
+    <strong>Supabase</strong>, <strong>Firebase</strong> and <strong>Stripe</strong>.</p>
 
 
   <section>
     <span class="eyebrow">What it actually prints</span>
     <h2>Run against the app it happened to</h2>
     <figure>
-      <div class="terminal">
+      <div class="terminal" tabindex="0" role="region" aria-label="Example ProdGuard output">
 <pre><span class="dim">$ npx prodguard check ~/my-app</span>
-
-  ProdGuard  <span class="dim">·  77 files scanned</span>
+  ProdGuard<span class="dim">  ·  80 files scanned  ·  ~/my-app</span>
 
   <span class="crit">🔴 CRITICAL</span>  Paid features are unlocked for everyone  <span class="dim">paywall-disabled</span>
 
-     Your paywall is hardcoded open. Every visitor gets the paid
-     product for free, and your Stripe subscriptions stop meaning
-     anything.
+     Your paywall is hardcoded open. Every visitor gets the paid product for
+     free, and your Stripe subscriptions stop meaning anything.
 
      <span class="path">src/pages/Dashboard.jsx:20</span>
-       <span class="code">const locked = false</span>
-       <span class="dim">→ `locked` is pinned to `false` instead of being derived</span>
-       <span class="dim">  from the user's subscription.</span>
+       const locked = false
+       <span class="dim">→ `locked` is pinned to `false` instead of being derived from the user's</span>
+       <span class="dim">→ subscription.</span>
      <span class="path">src/pages/QuoteDetail.jsx:169</span>
-       <span class="code">const locked = false</span>
+       const locked = false
+       <span class="dim">→ `locked` is pinned to `false` instead of being derived from the user's</span>
+       <span class="dim">→ subscription.</span>
 
   <span class="high">🟠 HIGH</span>  Email verification is turned off  <span class="dim">email-verification-disabled</span>
 
-     <span class="path">supabase/config.toml:226</span>
-       <span class="code">enable_confirmations = false</span>
+     New accounts become active without proving they own the email address. One
+     person can create unlimited accounts, and password resets can be aimed at
+     addresses nobody controls.
 
-  Result: <span class="crit">2 critical</span> <span class="dim">·</span> <span class="high">2 high</span></pre>
+     <span class="path">supabase/config.toml:226</span>
+       enable_confirmations = false
+       <span class="dim">→ Detected because Supabase config has confirmations disabled.</span>
+     <span class="path">supabase/config.toml:261</span>
+       enable_confirmations = false
+       <span class="dim">→ Detected because Supabase config has confirmations disabled.</span>
+
+  Result: <span class="crit">2 critical</span> · <span class="high">2 high</span>
+
+  ✗ Blocking. Fix these before shipping, or add an allow entry to .prodguardrc.json.</pre>
       </div>
-      <figcaption>Verbatim output from the app this happened to, with the path anonymized. Exit code 1, so CI stops.</figcaption>
+      <figcaption>The complete, unedited output from the app this happened to; only the path is anonymised. Exit code 1, so CI stops.</figcaption>
     </figure>
     <div class="verdict">Blocking · exit 1</div>
   </section>
 
   <div class="contract">
-    <p class="contract-head">What `check` does, locally, in under a second:</p>
+    <p class="contract-head">What <code>check</code> does, locally, in under a second:</p>
     <ul>
-      <li><strong>Reads</strong> source files in the directory you point it at, and nothing outside it.</li>
-      <li><strong>Writes nothing.</strong> The one exception is <code>init</code>, which creates two config files and says so.</li>
+      <li><strong>Reads</strong> source and <code>.env</code> files in the directory you point it at, and nothing outside it. It does not follow symlinks.</li>
+      <li><strong>Writes nothing.</strong> The one exception is <code>init</code>, which writes a config file and a GitHub Action — and tells you what it wrote.</li>
       <li><strong>Zero network requests.</strong> No telemetry, no uploads, no account, no sign-up.</li>
       <li><strong>Never executes your code.</strong> It matches patterns in text; it does not import or run your app.</li>
       <li><strong>Zero dependencies</strong> — there is no transitive supply chain to audit.</li>
@@ -491,12 +506,12 @@
     </p>
   </div>
 
-  <div class="install">
+  <div class="install" tabindex="0" role="region" aria-label="Install command">
     <span class="prompt">$</span><span>npx prodguard check</span><span class="cursor" aria-hidden="true"></span>
   </div>
 
   <p class="tryit">Not ready to point it at your own code?
-    <code>npx prodguard check --demo</code> runs all nine against a deliberately broken example app.</p>
+    <code>npx prodguard check --demo</code> runs all twelve against a deliberately broken example app.</p>
 
   <section>
     <span class="eyebrow">Why this exists</span>
@@ -592,17 +607,17 @@
   <section>
     <span class="eyebrow">Put it in front of the agent</span>
     <h2>One command wires it into CI</h2>
-    <div class="snippet">$ npx prodguard init
+    <pre class="snippet" tabindex="0" role="region" aria-label="Terminal example">$ npx prodguard init
 
   ✓ wrote .prodguardrc.json
-  ✓ wrote .github/workflows/prodguard.yml</div>
+  ✓ wrote .github/workflows/prodguard.yml</pre>
     <p>
       That workflow runs on every pull request — <strong>including the ones your agent opens</strong>. Dangerous
       changes stop merging instead of stopping your revenue.
     </p>
     <p>Want it earlier, before a commit even exists:</p>
-    <div class="snippet"><span class="comment"># .husky/pre-commit</span>
-npx prodguard check</div>
+    <pre class="snippet" tabindex="0" role="region" aria-label="Terminal example"><span class="comment"># .husky/pre-commit</span>
+npx prodguard check</pre>
   </section>
 
   <section>
@@ -611,7 +626,7 @@ npx prodguard check</div>
     <p>
       Every finding is written so that someone who can build an app can act on it. Not
       <span style="font-family: var(--mono); font-size: 0.85em;">CWE-862: Missing Authorization</span> — instead:
-      <em>“Anyone who knows another user's ID may be able to read their data.”</em>
+      <em>“Row Level Security is off — any logged-in user can read and modify every other user's rows.”</em>
     </p>
     <p>
       The people breaking production with agents right now are frequently not senior engineers. A warning
@@ -626,7 +641,7 @@ npx prodguard check</div>
       <li><strong>Not a linter.</strong> It ignores style entirely and only looks for changes that cost money or leak data.</li>
       <li><strong>Not a dashboard.</strong> Nothing to sign up for. No data leaves your machine.</li>
       <li><strong>Not a guarantee.</strong> A clean run means these specific checks didn't fire — not that your app is secure.</li>
-      <li><strong>Deliberately narrow.</strong> Eight patterns, tuned to stay quiet: tuned so a green build means something. It would rather stay silent on an exotic variant than block your CI over a guess. Treat a finding as a prompt to look, not proof of a vulnerability — and if one is genuinely fine in your codebase, allow-list it by rule and path.</li>
+      <li><strong>Deliberately narrow.</strong> Twelve patterns, tuned to stay quiet so that a green build means something. It reads text, it does not parse your program, so an unusual way of writing the same bug can still walk past it. Findings are a prompt to look, not proof of a vulnerability. Treat a finding as a prompt to look, not proof of a vulnerability — and if one is genuinely fine in your codebase, allow-list it by rule and path.</li>
     </ul>
   </section>
 

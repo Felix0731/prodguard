@@ -70,6 +70,24 @@ expect(
   !good.some((f) => f.rule === 'jwt-not-verified'),
 )
 
+// Evasions found by red-teaming. Each of these was silent before.
+expect(
+  'useState(false) counts as a paywall gate',
+  bad.some((f) => f.rule === 'paywall-disabled' && /useGate\.tsx/.test(f.file)),
+)
+expect(
+  'Realtime Database rules are checked, not just firestore.rules',
+  bad.some((f) => f.rule === 'firebase-rules-open' && /database\.rules\.json/.test(f.file)),
+)
+expect(
+  'short dashed recovery codes are recognised',
+  bad.some((f) => f.rule === 'credential-file-committed' && /recovery-codes\.txt/.test(f.file)),
+)
+expect(
+  'a comment promising constructEvent does not silence the warning',
+  bad.some((f) => f.rule === 'stripe-webhook-unverified' && /late-webhook\.mts/.test(f.file)),
+)
+
 console.log('')
 if (failures) {
   console.log(`  \u001b[31m${failures} failing\u001b[0m\n`)
