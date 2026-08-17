@@ -731,6 +731,9 @@ npx prodguard check</pre>
       <li><strong>Not a linter.</strong> It ignores style entirely and only looks for changes that cost money or leak data.</li>
       <li><strong>Not a dashboard.</strong> Nothing to sign up for. No data leaves your machine.</li>
       <li><strong>Not a guarantee.</strong> A clean run means these specific checks didn't fire — not that your app is secure.</li>
+      <li><strong>Guides, not just findings.</strong> If a check fires and you want to understand it
+        rather than just silence it: <a href="/check-supabase-rls">how to check whether RLS is enabled on
+        all your Supabase tables</a>, and the three states that look identical but are not.</li>
       <li><strong>Deliberately narrow.</strong> Twelve patterns, tuned to stay quiet so that a green build means something. It reads text, it does not parse your program, so an unusual way of writing the same bug can still walk past it. Findings are a prompt to look, not proof of a vulnerability. Treat a finding as a prompt to look, not proof of a vulnerability — and if one is genuinely fine in your codebase, allow-list it by rule and path.</li>
     </ul>
   </section>

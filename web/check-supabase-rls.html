@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to check if RLS is enabled on all your Supabase tables</title>
+<meta name="description" content="A SQL query that lists every table in your Supabase public schema with its RLS status and policy count, the three states that look alike but are not, and how to keep RLS from being switched off later.">
+<link rel="canonical" href="https://prodguard.vercel.app/check-supabase-rls">
+<meta property="og:title" content="How to check if RLS is enabled on all your Supabase tables">
+<meta property="og:description" content="The query, the three states people confuse, and how to stop RLS being turned off again later.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128737;</text></svg>">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [{
+    "@type": "Question",
+    "name": "How do I check if Row Level Security is enabled on all my Supabase tables?",
+    "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Query pg_class joined to pg_namespace for the public schema, selecting relrowsecurity as the RLS flag and counting matching rows in pg_policies. Any table where relrowsecurity is false is readable and writable by anyone holding the anon key."
+    }
+  }, {
+    "@type": "Question",
+    "name": "Does enabling RLS mean my Supabase table is protected?",
+    "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Not on its own. RLS enabled with zero policies denies all access to anon and authenticated roles, which makes the app appear broken. RLS enabled with a policy of using (true) permits everything while still reporting that RLS is on. Only RLS enabled with a restricting policy protects the table."
+    }
+  }]
+}
+</script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #F5F4F1;
+    --surface: #FFFFFF;
+    --ink: #1A1714;
+    --muted: #6E675F;
+    --rule: #DEDBD4;
+    --accent: #C8322A;
+    --amber: #8F5A08;
+    --pass: #2F6B4F;
+    --term-bg: #201D1A;
+    --term-ink: #E8E4DC;
+    --term-dim: #8D857A;
+    --on-accent: #FFF6F4;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+
+    --step--1: clamp(0.78rem, 0.76rem + 0.1vw, 0.83rem);
+    --step-0: clamp(1rem, 0.97rem + 0.15vw, 1.08rem);
+    --step-1: clamp(1.2rem, 1.13rem + 0.35vw, 1.4rem);
+    --step-2: clamp(1.5rem, 1.36rem + 0.7vw, 2rem);
+    --step-3: clamp(2rem, 1.7rem + 1.5vw, 3.1rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #161513;
+      --surface: #1E1D1A;
+      --ink: #F0EEE9;
+      --muted: #9E968B;
+      --rule: #34322D;
+      --accent: #F0564A;
+      --amber: #E39A2B;
+      --pass: #6BBF92;
+      --term-bg: #100F0E;
+      --term-ink: #E8E4DC;
+      --term-dim: #8A8175;
+      --on-accent: #1A0705;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #161513;
+    --surface: #1E1D1A;
+    --ink: #F0EEE9;
+    --muted: #9E968B;
+    --rule: #34322D;
+    --accent: #F0564A;
+    --amber: #E39A2B;
+    --pass: #6BBF92;
+    --term-bg: #100F0E;
+    --term-ink: #E8E4DC;
+    --term-dim: #8A8175;
+    --on-accent: #1A0705;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: var(--step-0);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  /* ---------- stamped header ---------- */
+
+  .stamp {
+    border-bottom: 2px solid var(--ink);
+    padding: 3.5rem 0 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+  }
+
+  .wordmark {
+    font-family: var(--mono);
+    font-size: var(--step-3);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin: 0;
+  }
+
+  .wordmark .guard { color: var(--accent); }
+
+  .stamp-meta {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.9;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .lede {
+    font-size: var(--step-1);
+    line-height: 1.45;
+    text-wrap: balance;
+    margin: 1.75rem 0 0;
+    max-width: 34ch;
+  }
+
+  .lede strong { font-weight: 600; }
+
+  .stack {
+    margin: 1.25rem 0 0;
+    font-size: var(--step--1);
+    font-family: var(--mono);
+    line-height: 1.7;
+    color: var(--muted);
+    max-width: 60ch;
+  }
+
+  .stack strong { color: var(--ink); font-weight: 600; }
+
+  .tryit {
+    margin: 0.7rem 0 0;
+    font-size: var(--step--1);
+    color: var(--muted);
+    max-width: 62ch;
+  }
+
+  .tryit code {
+    font-family: var(--mono);
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 0.1rem 0.35rem;
+  }
+
+  /* ---------- trust contract ---------- */
+
+  .contract {
+    margin: 1.25rem 0 0;
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--pass);
+    background: var(--surface);
+    padding: 1.1rem 1.25rem;
+  }
+
+  .contract-head {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 0.75rem;
+    max-width: none;
+  }
+
+  .contract ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.45rem;
+    font-size: 0.95rem;
+  }
+
+  .contract li {
+    padding-left: 1.5rem;
+    position: relative;
+  }
+
+  .contract li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: var(--pass);
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+
+  .contract code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+  }
+
+  .steps {
+    counter-reset: step;
+    list-style: none;
+    margin: 1.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 1.6rem;
+  }
+
+  .steps > li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 2.6rem;
+    max-width: 64ch;
+  }
+
+  .steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0.05em;
+    width: 1.7rem;
+    height: 1.7rem;
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--paper);
+    background: var(--ink);
+    border-radius: 50%;
+  }
+
+  .steps .snippet { margin: 0.6rem 0; }
+  .steps b { font-weight: 600; }
+
+  kbd {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    border: 1px solid var(--rule);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0.05em 0.35em;
+    background: var(--surface);
+  }
+
+  .muted-note {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: var(--step--1);
+    color: var(--muted);
+  }
+
+  .honest {
+    margin: 1rem 0 0;
+    font-size: var(--step--1);
+    color: var(--muted);
+    border-left: 2px solid var(--rule);
+    padding-left: 0.9rem;
+    max-width: 68ch;
+  }
+
+  .honest code { font-family: var(--mono); font-size: 0.9em; }
+
+  .contract-links {
+    margin: 0.9rem 0 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    max-width: none;
+  }
+
+  /* ---------- install line ---------- */
+
+  .install {
+    margin: 2rem 0 0;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    font-family: var(--mono);
+    font-size: var(--step-0);
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+  }
+
+  .install .prompt { color: var(--accent); user-select: none; }
+
+  .cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 1.05em;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    animation: blink 1.15s step-end infinite;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; }
+  }
+
+  /* ---------- section scaffolding ---------- */
+
+  section { margin-top: 4rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+    display: block;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: var(--step-2);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    margin: 0 0 1.25rem;
+    text-wrap: balance;
+  }
+
+  p { margin: 0 0 1.1rem; max-width: 65ch; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ---------- terminal ---------- */
+
+  figure { margin: 0; }
+
+  .terminal {
+    background: var(--term-bg);
+    color: var(--term-ink);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.75;
+    padding: 1.4rem 1.5rem;
+    overflow-x: auto;
+    border-left: 3px solid var(--accent);
+  }
+
+  .terminal pre { margin: 0; white-space: pre; }
+  .terminal .dim { color: var(--term-dim); }
+  .terminal .crit { color: #F0564A; font-weight: 600; }
+  .terminal .high { color: #E39A2B; font-weight: 600; }
+  .terminal .path { color: #8FB8D8; }
+  .terminal .code { color: var(--term-ink); }
+
+  figcaption {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    margin-top: 0.75rem;
+    line-height: 1.6;
+  }
+
+  .verdict {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: var(--accent);
+    color: var(--on-accent);
+    padding: 0.35rem 0.7rem;
+    margin-top: 1.25rem;
+  }
+
+  /* ---------- checks table ---------- */
+
+  .checks {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+  }
+
+  .checks th {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    font-weight: 400;
+    text-align: left;
+    padding: 0 0 0.6rem;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .checks td {
+    padding: 0.85rem 1rem 0.85rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+
+  .checks td.sev {
+    width: 1px;
+    padding-right: 1rem;
+    white-space: nowrap;
+  }
+
+  .sev-tag {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-left: 3px solid currentColor;
+    padding-left: 0.5rem;
+    display: block;
+  }
+
+  .sev-tag.c { color: var(--accent); }
+  .sev-tag.h { color: var(--amber); }
+
+  .checks code {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--muted);
+    display: block;
+    margin-top: 0.2rem;
+  }
+
+  /* ---------- code blocks ---------- */
+
+  .snippet {
+    white-space: pre;
+    margin: 0 0 1.1rem;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.8;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    margin: 0 0 1.1rem;
+  }
+
+  .snippet .comment { color: var(--muted); }
+
+  /* ---------- limits ---------- */
+
+  .limits {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .limits li {
+    padding-left: 1.6rem;
+    position: relative;
+    max-width: 65ch;
+  }
+
+  .limits li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: var(--mono);
+  }
+
+  /* ---------- footer ---------- */
+
+  footer {
+    margin-top: 5rem;
+    padding-top: 1.25rem;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header class="stamp">
+    <h1 class="wordmark" style="font-size:var(--step-2)"><a href="/" style="color:inherit;text-decoration:none">Prod<span class="guard">Guard</span></a></h1>
+    <div class="stamp-meta">Guide<br>Supabase · Postgres</div>
+  </header>
+
+  <h2 style="margin-top:2.5rem">How do I check if Row Level Security is enabled on all my Supabase tables?</h2>
+
+  <p class="lede" style="max-width:none;font-size:var(--step-0);line-height:1.6">
+    Run this query in the Supabase SQL editor. It lists every table in your public schema, whether RLS is
+    on, and how many policies each one has.
+  </p>
+
+  <pre class="snippet" tabindex="0" role="region" aria-label="SQL query to audit RLS">select
+  c.relname                                as table_name,
+  c.relrowsecurity                         as rls_enabled,
+  c.relforcerowsecurity                    as rls_forced,
+  (select count(*) from pg_policies p
+     where p.schemaname = n.nspname
+       and p.tablename  = c.relname)       as policy_count
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public'
+  and c.relkind = 'r'
+order by c.relrowsecurity asc, c.relname;</pre>
+
+  <p>Any row where <code>rls_enabled</code> is <code>false</code> is readable and writable by anyone holding
+    your anon key — which is shipped to every browser that loads your site. That is the whole finding.</p>
+
+  <section>
+    <span class="eyebrow">The part that catches people</span>
+    <h2>Enabled is not the same as protected</h2>
+
+    <p>There are three states, and only one of them is safe. The query above distinguishes all three:</p>
+
+    <table class="checks">
+      <thead>
+        <tr><th class="sev">State</th><th>What actually happens</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Open</span></td>
+          <td><code>rls_enabled = false</code><br>
+            Anyone with the anon key can read and write every row. No policy is consulted, because policies
+            are only evaluated when RLS is on.</td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag h">Locked out</span></td>
+          <td><code>rls_enabled = true</code>, <code>policy_count = 0</code><br>
+            RLS with no policies denies everything to anon and authenticated roles. Safe, but your app will
+            appear broken — this is the state people "fix" by turning RLS back off, which is how the hole
+            gets made.</td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag" style="color:var(--pass)">Protected</span></td>
+          <td><code>rls_enabled = true</code> with a policy that actually restricts<br>
+            The only state that does what you think it does.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>There is a fourth state worth knowing about: RLS enabled, with a policy of
+      <code>using (true)</code>. That passes every "is RLS on?" check ever written, including the query
+      above, and permits everything. Read your policies, not just the flag:</p>
+
+    <pre class="snippet" tabindex="0" role="region" aria-label="List policies">select schemaname, tablename, policyname, cmd, qual
+from pg_policies
+where schemaname = 'public'
+order by tablename;</pre>
+
+    <p>A <code>qual</code> of <code>true</code> means that policy allows the whole table.</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">Fixing it</span>
+    <h2>Turning RLS on without locking yourself out</h2>
+
+    <p>Enable it, then immediately add a policy — in the same migration, so the table is never live in the
+      "locked out" state:</p>
+
+    <pre class="snippet" tabindex="0" role="region" aria-label="Enable RLS with a policy">alter table public.documents enable row level security;
+
+create policy "owners read their own documents"
+  on public.documents
+  for select
+  using (auth.uid() = user_id);
+
+create policy "owners write their own documents"
+  on public.documents
+  for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);</pre>
+
+    <p><code>using</code> controls which existing rows are visible; <code>with check</code> controls what a
+      user is allowed to write. Omitting <code>with check</code> on a write policy is a common gap — it lets
+      someone insert a row belonging to a different user.</p>
+
+    <p>Your service-role key bypasses RLS entirely, by design. That is why it must never reach the browser,
+      and why testing your policies while authenticated as service-role tells you nothing.</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">Keeping it that way</span>
+    <h2>Checking it automatically</h2>
+
+    <p>The query above is a point-in-time answer. The failure worth guarding against is the one that happens
+      later: a migration, or an AI coding agent asked to fix a query, quietly turning RLS off again. That
+      change looks completely ordinary in a diff.</p>
+
+    <p>ProdGuard is a free, open-source command that reads your repository and fails your build when it
+      finds that class of change — RLS disabled, a table created without RLS ever being enabled, a
+      service-role key reachable from client code, and nine others:</p>
+
+    <pre class="snippet" tabindex="0" role="region" aria-label="Run ProdGuard">npx prodguard check</pre>
+
+    <p>Zero dependencies, MIT, nothing to sign up for, and no data leaves your machine. It reads text rather
+      than parsing your program, so it is a safety net rather than a proof —
+      <a href="/">what it does and does not catch</a> is written out in full.</p>
+
+    <p class="muted-note">Worth knowing either way: settings you change in the Supabase dashboard rather than
+      in a migration are not in your repository, so no repo scanner can see them. Only what is committed can
+      be checked.</p>
+  </section>
+
+  <footer>
+    <span><a href="/">ProdGuard</a> · <a href="https://github.com/Felix0731/prodguard">GitHub</a> · MIT</span>
+    <span>Guardrails for AI-written production code</span>
+  </footer>
+
+</div>
+
+</body>
+</html>
