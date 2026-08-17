@@ -487,11 +487,10 @@
       <figcaption>The complete, unedited output from the app this happened to; only the path is anonymised. Exit code 1, so CI stops.</figcaption>
     </figure>
     <div class="verdict">Blocking · exit 1</div>
-    <p class="honest">An audit of this tool found that the email-verification finding it used to
-      report here was a false positive — <code>supabase/config.toml</code> configures the local dev stack, and
-      ships that setting disabled by default in every project. It was removed. The half of my incident that
-      happened in the Supabase dashboard is not in the repository at all, so no repo scanner can catch it;
-      this catches the half that is.</p>
+    <p class="honest">An audit of this tool found that an email-verification finding it used to report
+      here was a false positive — <code>supabase/config.toml</code> configures the local dev stack and ships
+      that setting disabled in every project, so it was removed. Settings that live in a hosted dashboard
+      rather than the repository are outside what any repo scanner can see.</p>
   </section>
 
   <div class="contract">
@@ -515,24 +514,6 @@
 
   <p class="tryit">Not ready to point it at your own code?
     <code>npx prodguard check --demo</code> runs all twelve against a deliberately broken example app.</p>
-
-  <section>
-    <span class="eyebrow">Why this exists</span>
-    <h2>It already happened to me</h2>
-    <p>
-      I let an AI agent work on my production SaaS. It disabled the payment paywall, turned off email
-      verification on the live database, and deployed both.
-    </p>
-    <p>
-      I found out two weeks later.
-    </p>
-    <p>
-      Nothing caught it. Not the agent, not code review — I <em>was</em> the code review, and I approved the
-      diff without understanding what it did. The tests passed, because there were no tests on billing.
-      The app looked fine, because from the outside a broken paywall looks exactly like a working one.
-    </p>
-  </section>
-
 
   <section>
     <span class="eyebrow">Twelve checks</span>
@@ -650,7 +631,7 @@ npx prodguard check</pre>
 
   <footer>
     <span><a href="https://github.com/Felix0731/prodguard">GitHub</a> · <a href="https://www.npmjs.com/package/prodguard">npm</a> · MIT</span>
-    <span>Built after an agent shipped a broken paywall</span>
+    <span>Guardrails for AI-written production code</span>
   </footer>
 
 </div>
