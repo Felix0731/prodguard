@@ -63,11 +63,16 @@ export function collectFiles(root) {
         continue
       }
       if (text.includes('\u0000')) continue // binary file wearing a text extension
+      const rel = relative(root, full).split(sep).join('/')
       out.push({
         path: full,
-        rel: relative(root, full).split(sep).join('/'),
+        rel,
         text,
         lines: text.split('\n'),
+        // Prose files quote broken code on purpose — a README showing
+        // `const locked = false` as an example is documentation, not a bug.
+        // Only the rules that hunt for literal secrets should read them.
+        isDoc: /\.(md|txt|text|csv)$/i.test(rel),
       })
     }
   }

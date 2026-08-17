@@ -1,0 +1,10 @@
+{
+  "strict": false,
+  "allow": [
+    "paywall-disabled:src/demo.js",
+    "service-role-key-exposed:src/demo.js",
+    "email-verification-disabled:src/demo.js",
+    "live-secret-committed:src/demo.js",
+    "credential-file-committed:src/demo.js"
+  ]
+}

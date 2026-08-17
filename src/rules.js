@@ -47,8 +47,9 @@ rule({
       /(?:const|let|var)\s+(locked|isLocked|hasAccess|isPaid|isPro|isPremium|hasActiveSub|hasSubscription|isSubscribed|canAccess|isTrialExpired)\s*=\s*(true|false)\b/g
 
     for (const file of files) {
-      if (isMigration(file.rel)) continue
+      if (file.isDoc || isMigration(file.rel)) continue
       for (const hit of matches(file, GATE)) {
+        if (isDiscussion(hit.snippet)) continue
         const name = hit.match[1]
         const value = hit.match[2]
         // `locked = false` opens the gate. `hasAccess = true` does the same
@@ -129,8 +130,10 @@ rule({
       { re: /mailer_autoconfirm\s*[=:]\s*true/g, why: 'Supabase is set to auto-confirm every signup' },
     ]
     for (const file of files) {
+      if (file.isDoc) continue
       for (const { re, why } of PATTERNS) {
         for (const hit of matches(file, re)) {
+          if (isDiscussion(hit.snippet)) continue
           found.push({ file: file.rel, line: hit.line, snippet: hit.snippet, detail: `Detected because ${why}.` })
         }
       }
@@ -156,6 +159,7 @@ rule({
     const SERVICE_ROLE = /SERVICE_ROLE_KEY|service_role/g
 
     for (const file of files) {
+      if (file.isDoc) continue
       for (const hit of matches(file, PUBLIC_PREFIXED)) {
         found.push({
           file: file.rel,

@@ -61,6 +61,10 @@ expect(
     !bad.some((f) => f.rule === 'rls-never-enabled' && /quotes/.test(f.detail)),
 )
 expect('critical findings exist in bad fixture', bad.some((f) => f.severity === 'critical'))
+expect(
+  'docs quoting broken code do not fire (README.md in good/)',
+  !good.some((f) => /README\.md/.test(f.file)),
+)
 
 console.log('')
 if (failures) {

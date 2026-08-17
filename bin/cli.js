@@ -49,6 +49,16 @@ if (command !== 'check') {
   process.exit(2)
 }
 
+// Silently ignoring a flag is how a stale install ends up printing a cheerful
+// "nothing found" for a command the user thinks they ran.
+const KNOWN_FLAGS = new Set(['--demo', '--strict', '--json', '--help', '-h', '--version', '-v'])
+const unknown = [...flags].filter((f) => !KNOWN_FLAGS.has(f))
+if (unknown.length) {
+  console.error(`\n  prodguard: unrecognised option ${unknown.join(', ')}`)
+  console.error(`  This version is v${pkg.version}. If you expected it to work, try: npx prodguard@latest\n`)
+  process.exit(2)
+}
+
 const config = loadConfig(root)
 const strict = flags.has('--strict') || config.strict === true
 
