@@ -1,8 +1,12 @@
 # Launch posts — ProdGuard
 
-Everything below is true. Don't add numbers you can't back up, don't invent users, don't
-claim it catches things it doesn't. The story is the whole advantage — inflating it throws
-that away, and this audience can smell it.
+Everything below is true and checkable. Don't add numbers you can't back up, don't invent
+users, don't claim it catches things it doesn't. This audience checks.
+
+**The angle:** the tool was audited and the audit was ugly. That's the story — a security
+tool caught leaking secrets, found and fixed before anyone ran it. It's honest, it's
+unusual, and it demonstrates what the product is about without disclosing anything about
+your own apps.
 
 ---
 
@@ -10,73 +14,60 @@ that away, and this audience can smell it.
 
 **Title:**
 
-> An AI agent disabled my Stripe paywall and turned off email verification in production. I found out two weeks later.
+> I built a scanner for the things AI agents break in Supabase apps, then had it audited. It was printing the secrets it found.
 
 **Body:**
 
-I build with Claude Code. A couple of weeks ago I let an agent work on my live SaaS. Somewhere in a bigger change it set my paywall gate to `false`, flipped email confirmations off in my Supabase config, and deployed.
+I kept seeing the same class of bug in AI-built apps: an agent is asked to make something work, the fastest path is to remove the thing blocking it, and the guard quietly comes off. RLS disabled to fix a query. A paywall gate pinned to `false` for a demo. Email confirmations off to speed up testing. None of it looks wrong from the outside.
 
-I approved the diff. I didn't understand what I was approving.
-
-Nothing caught it:
-
-- Tests passed — I had no tests on billing.
-- The app looked completely normal. From the outside a broken paywall looks exactly like a working one.
-- I only found it two weeks later, going through the repo for something unrelated.
-
-So I wrote the check that would have caught it. It's free, MIT, zero dependencies:
+So I wrote a small scanner for exactly that class of change. Free, MIT, zero dependencies:
 
 ```bash
-npx prodguard check --demo   # see what it catches, without pointing it at your code
-npx prodguard check          # then run it for real
+npx prodguard check --demo    # see what it catches, without touching your code
+npx prodguard check           # then run it on your project
 ```
 
-It looks for nine things that quietly cost money or leak data:
+Twelve checks; the Supabase-relevant ones:
 
-- paywall/entitlement gate hardcoded open (`const locked = false`)
-- Stripe webhook handler with no `constructEvent` signature check
-- `service_role` key reachable from client code
-- `DISABLE ROW LEVEL SECURITY`, or a table created and RLS never enabled
-- live Stripe/Anthropic/OpenAI keys committed
-- `email_confirm: true` / `enable_confirmations = false`
-- migrations that `DROP TABLE` or `TRUNCATE`
-- a recovery-codes or credentials file committed to the repo
+- `ALTER TABLE ... DISABLE ROW LEVEL SECURITY`, or a table created and RLS never enabled
+- `service_role` key reachable from client code, or behind a `VITE_`/`NEXT_PUBLIC_` prefix
+- auto-confirm / `email_confirm: true` in real auth code
+- a Stripe webhook handler that never verifies the signature
+- login tokens decoded but never signature-checked
+- Firebase rules set to `allow read, write: if true`, including the console's "test mode" time bomb
+- committed live keys, recovery-code files, `DELETE FROM` with no `WHERE`
 
-Reports are in plain English rather than CWE codes, because the people breaking prod with agents right now often aren't senior engineers. I wasn't:
+**Then I had it audited, and the audit was worse than I expected.** Seven passes over the code and the site. What came back:
 
-```
-🔴 CRITICAL  Paid features are unlocked for everyone  paywall-disabled
+- **It printed the secrets it found.** Redaction was wired into exactly one of twelve rules. The other ten dumped the whole matched line — a service-role JWT, a database URL with its password — to stdout and into CI logs. A tool advertising that it protects your service-role key, printing your service-role key.
+- **A 512 KB file could hang CI for 159 seconds** through catastrophic regex backtracking. The same bug meant `TRUNCATE TABLE x` never matched at all.
+- **A typo'd path passed the gate.** `prodguard check /wrong/path` printed "Nothing dangerous found" and exited 0. For a tool whose only meaningful output is an exit code, that's the worst possible failure.
+- **24 false positives across ten of twelve rules.** The worst hit 100% of Supabase projects: a folder containing nothing but `supabase init` output produced two HIGH findings, because the stock template ships `enable_confirmations = false` — and one of the two was in `[auth.sms]`, an email rule firing on a phone setting.
+- A red-team pass built 29 vulnerable files and got **zero findings, exit 0**. Every rule was a literal-syntax matcher, so `const [locked, setLocked] = useState(false)` — the way an agent actually writes a gate — walked straight past it.
 
-   Your paywall is hardcoded open. Every visitor gets the paid product for
-   free, and your Stripe subscriptions stop meaning anything.
-
-   src/pages/Dashboard.jsx:20
-     const locked = false
-     → `locked` is pinned to `false` instead of being derived from the
-     → user's subscription.
-```
-
-`npx prodguard init` drops in a GitHub Action so it runs on every PR — including the ones your agent opens.
+All fixed in v0.5.0, each with a regression test. Redaction is central now, so no rule can forget it.
 
 Repo: https://github.com/Felix0731/prodguard
 
-Being straight about limits: it's pattern matching, not real program analysis. It will miss creative ways of breaking the same things and it can produce false positives — there's an allow-list for that. A clean run means these nine checks didn't fire, not that your app is secure.
+**Straight about the limits:** it reads text, it does not parse your program. An unusual way of writing the same bug can still get past it, and it can be wrong — there's an allow-list for that. A clean run means these twelve checks didn't fire, not that your app is secure. And anything configured in the Supabase dashboard rather than your repo is invisible to it, as it is to any repo scanner.
 
-If an agent has broken something in your Supabase app that this doesn't catch, tell me what the diff looked like and I'll add a rule. That's genuinely the most useful thing anyone could give me right now.
+If an agent has broken something in your Supabase app that this doesn't catch, tell me what the diff looked like and I'll add a rule. That's the most useful thing anyone could give me right now.
 
 ---
 
-## 2. r/ClaudeAI and r/cursor — same story, agent-first framing
+## 2. r/ClaudeAI and r/cursor — agent-first framing
 
 **Title:**
 
-> I let Claude Code work on my production app. It turned off my paywall and shipped it. Here's the guard I wrote afterwards.
+> I audited my own AI-agent safety tool. It was leaking the secrets it was supposed to protect.
 
-**Body:** same as above, but open with this instead of the Supabase framing:
+**Body:** as above, but open with this instead of the Supabase framing:
 
-> The agent wasn't malicious and it wasn't even wrong, exactly — it was asked to make something work and the fastest path was to remove the thing blocking it. That's the failure mode nobody warns you about: agents optimise for the task, not for your revenue.
+> The agent isn't malicious and usually isn't even wrong — it's asked to make something work, and the fastest path is to remove the thing in the way. That's the failure mode nobody warns you about: agents optimise for the task, not for your revenue.
+>
+> The irony is that I wrote a tool to catch that, and the audit found my tool doing its own version of the same thing — printing the secrets it was hired to guard, because redaction had been added to one rule and not the other eleven.
 
-Keep the rest identical. Drop the Supabase-specific check names in favour of the plain-English list.
+Then the checks list and the audit findings. Drop the Supabase-specific rule names for the plain-English list.
 
 ---
 
@@ -88,22 +79,23 @@ Keep the rest identical. Drop the Supabase-specific check names in favour of the
 
 **Body:**
 
-> I let a coding agent work on my live SaaS and it disabled my Stripe paywall and email verification, then deployed. I found out two weeks later, because from the outside a broken paywall looks identical to a working one.
+> Twelve checks for the class of change where an agent removes a guard to make something work: paywall gates pinned open, Stripe webhooks with no signature verification, service-role keys reachable from client code, RLS disabled or never enabled, unverified JWTs, Firebase rules open to the world, committed secrets, destructive migrations. Exit code 1 so it blocks CI.
 >
-> ProdGuard is the check that would have caught it: nine patterns that mean money or data is leaking — paywall gates pinned open, Stripe webhooks with no signature verification, service-role keys reachable from client code, RLS disabled or never enabled, committed live keys and credential files, email verification off, destructive migrations. Exit code 1 so it blocks CI.
+> Zero dependencies, MIT. `npx prodguard check --demo` shows all twelve firing on a broken example app without touching your code.
 >
-> Zero dependencies, MIT, ~700 lines. `npx prodguard check --demo` shows all nine firing on a broken example app without touching your code.
+> I had it audited before posting, which I'd recommend to anyone shipping a security tool. It found that redaction had been wired into one of twelve rules, so the other eleven printed matched lines verbatim — including service-role JWTs and a database URL with its password, straight into CI logs. It also found a regex that turned a 512 KB file into a 159-second CI hang, a bad path silently passing the gate with exit 0, and 24 false positives, one of which fired on every Supabase project on earth because the vendor's own default template trips it.
 >
-> It's deliberately not an observability platform — nothing to sign up for and no data leaves your machine. It's pattern matching, so it misses things and occasionally cries wolf; there's an allow-list.
+> All fixed, each with a regression test. It reads text rather than parsing your program, so it misses things and occasionally cries wolf; there's an allow-list.
 >
-> The part I'd most like feedback on: which additional agent-caused failures are worth encoding as rules. I only have my own scar tissue to go on so far.
+> What I'd most like feedback on: which other agent-caused failures are worth encoding as rules.
 
 ---
 
 ## Before you post
 
-- [x] ~~Regenerate the npm 2FA recovery codes~~ — done, new set is in the macOS Keychain.
-- [ ] Read each subreddit's self-promotion rules. r/Supabase tolerates "I built a free tool for this" posts; some subs need flair or ban links in the body. If in doubt, put the repo link in a top comment instead.
-- [ ] Post r/Supabase **first**, on a weekday morning ET. Wait for it to land before cross-posting — if it goes well, mention the traction in the HN post.
-- [ ] Answer every single comment for the first few hours. That's what decides whether it spreads.
-- [ ] Expect the top comment to be "just use RLS properly / write tests." The answer is: yes, and I didn't, and neither do most people shipping with agents — that's the point.
+- [ ] **Publish the current version to npm.** The package must match what the site and the post describe, or the first thing a reader runs is the old build. This is the only true blocker.
+- [ ] Read each subreddit's self-promotion rules. r/Supabase tolerates "I built a free tool for this"; some subs need flair or ban links in the body. If in doubt, put the repo link in a top comment.
+- [ ] Post r/Supabase **first**, weekday morning ET. Let it land before cross-posting; if it goes well, mention the traction on HN.
+- [ ] Answer every comment for the first few hours. That decides whether it spreads.
+- [ ] Expect "just use RLS properly / write tests." The answer: yes, and most people shipping with agents don't, which is the point. Agree, then point at the demo.
+- [ ] Expect someone to try to break it. Good — that's how the last dozen fixes happened, and saying so is the most credible thing you can do.

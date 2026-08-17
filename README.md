@@ -22,6 +22,46 @@ Nothing caught it. Not the agent, not code review — I *was* the code review, a
 
 So this checks for the specific things that quietly cost you money or leak your users' data, and it fails your build when it finds them.
 
+## Never used a terminal command? Start here
+
+Two minutes, and it installs nothing permanently.
+
+**1. Check you have Node.** Open Terminal (Mac: press ⌘+Space, type *terminal*, enter) or PowerShell (Windows: Start menu). Paste:
+
+```bash
+node --version
+```
+
+A number like `v20.11.0` means you're set. `command not found` means install Node from [nodejs.org](https://nodejs.org), then close and reopen Terminal.
+
+**2. See what it does, without touching your code.**
+
+```bash
+npx prodguard check --demo
+```
+
+It asks `Ok to proceed? (y)` the first time — press enter. This runs against a broken example app inside the tool. Your files are not read.
+
+**3. Point it at your project.** Type `cd` and a space, then drag your project folder onto the Terminal window (that pastes the path), press enter, then:
+
+```bash
+npx prodguard check
+```
+
+**4. Read the results.** Each finding names a file and line, like `src/pages/Dashboard.jsx:20`. Open it, go to that line, decide for yourself. A finding is a prompt to look, not a verdict.
+
+**5. Optional — run it automatically.**
+
+```bash
+npx prodguard init
+```
+
+Writes two small files. Commit them and GitHub runs the check on every pull request, including the ones your agent opens.
+
+Stuck? [Open an issue](https://github.com/Felix0731/prodguard/issues) and say where you got lost.
+
+---
+
 ## What it catches
 
 | Check | Severity | What it means in plain English |

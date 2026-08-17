@@ -200,6 +200,58 @@
     font-size: 0.85em;
   }
 
+  .steps {
+    counter-reset: step;
+    list-style: none;
+    margin: 1.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 1.6rem;
+  }
+
+  .steps > li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 2.6rem;
+    max-width: 64ch;
+  }
+
+  .steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0.05em;
+    width: 1.7rem;
+    height: 1.7rem;
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--paper);
+    background: var(--ink);
+    border-radius: 50%;
+  }
+
+  .steps .snippet { margin: 0.6rem 0; }
+  .steps b { font-weight: 600; }
+
+  kbd {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    border: 1px solid var(--rule);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0.05em 0.35em;
+    background: var(--surface);
+  }
+
+  .muted-note {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: var(--step--1);
+    color: var(--muted);
+  }
+
   .honest {
     margin: 1rem 0 0;
     font-size: var(--step--1);
@@ -514,6 +566,60 @@
 
   <p class="tryit">Not ready to point it at your own code?
     <code>npx prodguard check --demo</code> runs all twelve against a deliberately broken example app.</p>
+
+  <section>
+    <span class="eyebrow">Getting started</span>
+    <h2>If you have never run a terminal command</h2>
+    <p>This takes about two minutes and installs nothing permanently.</p>
+
+    <ol class="steps">
+      <li>
+        <strong>Check you have Node.</strong>
+        Open <b>Terminal</b> (on a Mac press <kbd>⌘</kbd><kbd>Space</kbd>, type <em>terminal</em>, hit enter;
+        on Windows open <b>PowerShell</b> from the Start menu). Paste this and press enter:
+        <pre class="snippet" tabindex="0" role="region" aria-label="Check Node version">node --version</pre>
+        If you see a number like <code>v20.11.0</code>, you're set. If it says
+        <em>command not found</em>, install Node from
+        <a href="https://nodejs.org">nodejs.org</a> — take the button on the left — then close Terminal and
+        reopen it.
+      </li>
+
+      <li>
+        <strong>See what it does, without touching your code.</strong>
+        <pre class="snippet" tabindex="0" role="region" aria-label="Run the demo">npx prodguard check --demo</pre>
+        It will ask <em>Ok to proceed? (y)</em> the first time — press enter. This runs against a broken
+        example app that lives inside the tool. Your files are not read at all.
+      </li>
+
+      <li>
+        <strong>Point it at your own project.</strong>
+        Type <code>cd</code> and a space, then <b>drag your project folder onto the Terminal window</b> —
+        that pastes the path for you — and press enter. Then:
+        <pre class="snippet" tabindex="0" role="region" aria-label="Scan your project">npx prodguard check</pre>
+      </li>
+
+      <li>
+        <strong>Read what comes back.</strong>
+        Every finding names the file and the line number, like
+        <code>src/pages/Dashboard.jsx:20</code>. Open that file, go to that line, and decide for yourself
+        whether it's a real problem. A finding is a prompt to look, not a verdict.
+        <span class="muted-note">Nothing dangerous found? That means these twelve checks didn't
+        fire — not that your app is perfect.</span>
+      </li>
+
+      <li>
+        <strong>Optional: make it run automatically.</strong>
+        <pre class="snippet" tabindex="0" role="region" aria-label="Set up CI">npx prodguard init</pre>
+        This writes two small files into your project. Commit them, and from then on GitHub runs the check
+        on every pull request — including the ones your AI agent opens — and blocks the merge if something
+        critical shows up.
+      </li>
+    </ol>
+
+    <p class="tryit">Stuck on any of this?
+      <a href="https://github.com/Felix0731/prodguard/issues">Open an issue</a> and say where you got
+      lost — that's useful feedback, not a bother.</p>
+  </section>
 
   <section>
     <span class="eyebrow">Twelve checks</span>
