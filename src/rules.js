@@ -1,4 +1,4 @@
-import { matches } from './scan.js'
+import { matches, redactSecrets, lineOf } from './scan.js'
 
 // Severity ordering matters for exit codes and report grouping.
 export const SEVERITY = { critical: 3, high: 2, medium: 1 }
@@ -30,6 +30,23 @@ export function stripComments(text, sql = false) {
   out = out.replace(/(^|[^:])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)))
   if (sql) out = out.replace(/--[^\n]*/g, blank)
   return out
+}
+
+// True when the match sits inside a comment. The old line-leading test missed
+// trailing comments, so a warning against a bug was itself reported as the bug.
+export function inComment(file, index) {
+  const lineStart = file.text.lastIndexOf('\n', index - 1) + 1
+  const before = file.text.slice(lineStart, index)
+  if (/(^|[^:])\/\//.test(before)) return true
+  if (/(^|\s)--/.test(before)) return true
+  if (/^\s*[*#]/.test(before)) return true
+  const open = file.text.lastIndexOf('/*', index)
+  return open !== -1 && file.text.indexOf('*/', open) > index
+}
+
+// Files that exist to describe or exercise behaviour, not to run in production.
+export function isNonProduction(rel) {
+  return /\.(test|spec|stories|story|e2e|cy)\.[jt]sx?$|(^|\/)(__tests__|stories|scripts|bin|tools|docs|examples?)\//i.test(rel)
 }
 
 function isDiscussion(snippet) {
@@ -67,10 +84,15 @@ rule({
       'gm',
     )
 
+    // `locked` is far more often a UI lock, a mutex or a record lock than a
+    // paywall, so require the file to be about billing at all.
+    const BILLING = /subscription|stripe|billing|paywall|entitlement|\bplan\b|\btier\b|upgrade|premium|checkout|paid/i
     for (const file of files) {
       if (file.isDoc || isMigration(file.rel)) continue
+      if (isNonProduction(file.rel)) continue
+      if (!BILLING.test(file.text)) continue
       for (const hit of matches(file, GATE)) {
-        if (isDiscussion(hit.snippet)) continue
+        if (inComment(file, hit.match.index)) continue
         // Whichever alternation matched, the name and value are the two
         // defined capture groups in that pair.
         const groups = hit.match.slice(1).filter((g) => g !== undefined)
@@ -118,9 +140,15 @@ rule({
         /STRIPE_WEBHOOK_SECRET/.test(file.text)
       if (!looksLikeWebhook) continue
       if (!/stripe/i.test(file.text)) continue
+      if (isNonProduction(file.rel)) continue
+      // An env schema that merely names STRIPE_WEBHOOK_SECRET is not a handler.
+      if (!/\breq\b|\brequest\b|export\s+(default\s+)?(async\s+)?function\s+(POST|handler)|export\s+const\s+POST|serve\(/.test(file.text)) continue
       // The only thing that actually authenticates a Stripe webhook — and it
       // has to be code. A comment promising to call it is not a call.
-      if (/constructEvent(Async)?\s*\(/.test(stripComments(file.text))) continue
+      const code = stripComments(file.text)
+      if (/constructEvent(Async)?\s*\(|webhooks\.signature\.verifyHeader\s*\(/.test(code)) continue
+      // Extracting verification into a helper is good practice, not a bug.
+      if (/\b(verify|check|assert)\w*(Stripe|Signature|Webhook|Event)\w*\s*\(|\b(stripe|webhook)\w*[Vv]erif\w*\s*\(/.test(code)) continue
 
       const anchor =
         [...matches(file, /stripe-signature|STRIPE_WEBHOOK_SECRET|webhook/i)][0] || { line: 1, snippet: '' }
@@ -158,6 +186,11 @@ rule({
     ]
     for (const file of files) {
       if (file.isDoc) continue
+      // supabase/config.toml configures the local dev stack only — hosted auth
+      // settings live in the dashboard, not the repo — and its stock template
+      // ships enable_confirmations = false in both [auth.email] and [auth.sms].
+      // Flagging it means every Supabase project fails on vendor defaults.
+      if (/supabase\/config\.toml$/.test(file.rel)) continue
       for (const { re, why } of PATTERNS) {
         for (const hit of matches(file, re)) {
           if (isDiscussion(hit.snippet)) continue
@@ -196,8 +229,14 @@ rule({
         })
       }
       if (!isClientReachable(file.rel)) continue
+      if (isNonProduction(file.rel)) continue
+      // 'use server' and import 'server-only' are enforced by the bundler: the
+      // build fails if a client component imports them. That is exactly the
+      // guarantee you want around a service-role key.
+      if (/^\s*(['"])use server\1/m.test(file.text)) continue
+      if (/(import|require\()\s*['"]server-only['"]/.test(file.text)) continue
       for (const hit of matches(file, SERVICE_ROLE)) {
-        if (isDiscussion(hit.snippet)) continue
+        if (inComment(file, hit.match.index)) continue
         // Fresh regex each time: a /g literal keeps lastIndex between calls.
         if (new RegExp(PUBLIC_PREFIXED.source).test(hit.snippet)) continue // already reported above
         found.push({
@@ -273,6 +312,10 @@ rule({
       for (const hit of matches(file, CREATE)) {
         const table = normalizeTable(hit.match[1])
         if (!table || enabled.has(table) || explicitlyDisabled.has(table)) continue
+        if (inComment(file, hit.match.index)) continue
+        // PostgREST only exposes `public`; a table in a private schema is not
+        // reachable over the API, so RLS on it would change nothing.
+        if (table.includes('.')) continue
         // Supabase's own bookkeeping tables are not the developer's problem.
         if (/^(auth|storage|realtime|extensions|graphql|vault|net|cron)\./.test(table)) continue
         found.push({
@@ -310,9 +353,13 @@ rule({
       { re: /sk-proj-[A-Za-z0-9_-]{20,}/g, what: 'OpenAI API key' },
     ]
     for (const file of files) {
-      if (/\.example$|\.sample$|\.template$/.test(file.rel)) continue
+      if (/\.(example|sample|template)\.|\.(example|sample|template)$/.test(file.rel)) continue
+      if (isNonProduction(file.rel)) continue
       for (const { re, what } of PATTERNS) {
         for (const hit of matches(file, re)) {
+          if (inComment(file, hit.match.index) && file.isDoc) continue
+          if (/(.)\1{7,}/.test(hit.match[0])) continue
+          if (/REPLACE|YOUR[_-]|EXAMPLE|PLACEHOLDER|XXXX|CHANGEME|\.\.\./i.test(hit.match[0])) continue
           found.push({
             file: file.rel,
             line: hit.line,
@@ -344,7 +391,9 @@ rule({
   run(files) {
     const found = []
     // Named like a credential dump...
-    const NAME = /(^|\/)[^/]*(recovery[-_. ]?codes?|backup[-_. ]?codes?|2fa[-_. ]?codes?|credentials?|secrets?|private[-_. ]?key)[^/]*\.(txt|csv|json|md|text)$/i
+    // Dropped the very generic `secrets`/`credentials` — a secrets runbook is
+    // not a secrets dump — in favour of names that mean an actual export.
+    const NAME = /(^|\/)[^/]*(recovery[-_. ]?codes?|backup[-_. ]?codes?|2fa[-_. ]?codes?|private[-_. ]?key)[^/]*\.(txt|csv|json|md|text)$/i
     // ...and actually containing secret-shaped lines, so we don't flag a doc
     // that merely discusses credentials.
     // GitHub, Google and npm recovery codes are short dashed alphanumerics —
@@ -355,7 +404,8 @@ rule({
 
     for (const file of files) {
       if (!NAME.test(file.rel)) continue
-      if (/\.example$|\.sample$|\.template$/.test(file.rel)) continue
+      if (/\.(example|sample|template)\.|\.(example|sample|template)$/.test(file.rel)) continue
+      if (isNonProduction(file.rel)) continue
       // Two or more code-shaped lines: one is a coincidence, a block is a dump.
       const dashed = (file.text.match(DASHED) || []).length
       if (!SECRETY.test(file.text) && dashed < 2) continue
@@ -397,8 +447,11 @@ rule({
       // `.verify()` anywhere used to suppress the whole file, so an unrelated
       // hmac.verify() next to a jwt.decode() hid the bug. Require the verify
       // to belong to a JWT library.
+      if (isNonProduction(file.rel)) continue
       const code = stripComments(file.text)
       if (/\b(?:jwt|jsonWebToken|jsonwebtoken|jose)\s*\.\s*verify\s*\(|\bjwtVerify\s*\(|\bverifyIdToken\s*\(/.test(code)) continue
+      // Decoding purely to read `exp` and schedule a refresh trusts nothing.
+      if (!/\brole\b|\badmin\b|isAdmin|permission|scope|authoriz|\bres\.|\bnext\s*\(/i.test(code)) continue
       // A file that verifies somewhere is doing the right thing.
       for (const hit of matches(file, DECODE)) {
         if (isDiscussion(hit.snippet)) continue
@@ -435,6 +488,7 @@ rule({
     for (const file of files) {
       if (!/\.rules$|firestore\.rules|storage\.rules|database\.rules\.json/i.test(file.rel)) continue
       for (const hit of matches(file, OPEN)) {
+        if (inComment(file, hit.match.index)) continue
         found.push({
           file: file.rel,
           line: hit.line,
@@ -467,9 +521,16 @@ rule({
       if (!/\.(js|jsx|ts|tsx|mjs|cjs|mts|cts|json|yml|yaml|toml)$/.test(file.rel)) continue
       const wildcard =
         /(Access-Control-Allow-Origin["'\s:=,]+\*)|(origin\s*:\s*["']\*["'])|(origin\s*:\s*true\b)|(Access-Control-Allow-Origin["'\s:=,]+.{0,40}headers\.origin)/i
-      const creds = /(Access-Control-Allow-Credentials["'\s:=,]+true)|(credentials\s*:\s*true)/i
-      if (!wildcard.test(file.text) || !creds.test(file.text)) continue
-      const anchor = [...matches(file, /Access-Control-Allow-Origin|origin\s*:\s*["']\*["']/i)][0] || { line: 1, snippet: '' }
+      // \b so axios's `withCredentials: true` does not masquerade as CORS creds.
+      const creds = /(Access-Control-Allow-Credentials["'\s:=,]+true)|(^|[^A-Za-z])credentials\s*:\s*true/i
+      const code = stripComments(file.text)
+      if (!wildcard.test(code) || !creds.test(code)) continue
+      // Two correctly-configured routes in one file are not one hole: the
+      // wildcard and the credentials have to belong to the same config.
+      const wIdx = code.search(wildcard)
+      const cIdx = code.search(creds)
+      if (wIdx === -1 || cIdx === -1 || Math.abs(wIdx - cIdx) > 400) continue
+      const anchor = { line: lineOf(file, wIdx), snippet: (file.lines[lineOf(file, wIdx) - 1] || '').trim().slice(0, 160) }
       found.push({
         file: file.rel,
         line: anchor.line,
@@ -494,10 +555,13 @@ rule({
   run(files) {
     const found = []
     const DESTRUCTIVE =
-      /\b(DROP\s+TABLE|TRUNCATE\s+(?:TABLE\s+)?|DROP\s+SCHEMA|DROP\s+DATABASE)\s+(?:IF\s+EXISTS\s+)?([^\s;]+)|\b(ALTER\s+TABLE)\s+([^\s;]+)[\s\S]{0,40}?DROP\s+COLUMN|\b(DELETE\s+FROM)\s+([^\s;]+)\s*;/gi
+      /\b(DROP\s+TABLE|TRUNCATE(?:\s+TABLE)?|DROP\s+SCHEMA|DROP\s+DATABASE)\s+(?:IF\s+EXISTS\s+)?([^\s;]+)|\b(ALTER\s+TABLE)\s+([^\s;]+)[\s\S]{0,40}?DROP\s+COLUMN|\b(DELETE\s+FROM)\s+([^\s;]+)\s*;/gi
     for (const file of files) {
       if (!isMigration(file.rel)) continue
+      // A down migration undoing its up migration is the entire point of one.
+      if (/\.down\.sql$|_down\.sql$|(^|\/)down\//i.test(file.rel)) continue
       for (const hit of matches(file, DESTRUCTIVE)) {
+        if (inComment(file, hit.match.index)) continue
         found.push({
           file: file.rel,
           line: hit.line,
@@ -534,6 +598,9 @@ export function runRules(files) {
       const key = `${def.id}|${hit.file}|${hit.line}`
       if (seen.has(key)) continue
       seen.add(key)
+      // Central, unconditional. No rule can forget.
+      if (hit.snippet) hit.snippet = redactSecrets(hit.snippet)
+      if (hit.detail) hit.detail = redactSecrets(hit.detail)
       results.push({
         rule: def.id,
         severity: def.severity,

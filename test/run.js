@@ -72,6 +72,10 @@ expect(
 
 // Evasions found by red-teaming. Each of these was silent before.
 expect(
+  'a UI lock with no billing context is not a paywall',
+  !good.some((f) => f.rule === 'paywall-disabled'),
+)
+expect(
   'useState(false) counts as a paywall gate',
   bad.some((f) => f.rule === 'paywall-disabled' && /useGate\.tsx/.test(f.file)),
 )

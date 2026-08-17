@@ -200,6 +200,17 @@
     font-size: 0.85em;
   }
 
+  .honest {
+    margin: 1rem 0 0;
+    font-size: var(--step--1);
+    color: var(--muted);
+    border-left: 2px solid var(--rule);
+    padding-left: 0.9rem;
+    max-width: 68ch;
+  }
+
+  .honest code { font-family: var(--mono); font-size: 0.9em; }
+
   .contract-links {
     margin: 0.9rem 0 0;
     padding-top: 0.75rem;
@@ -432,7 +443,7 @@
   <header class="stamp">
     <h1 class="wordmark">Prod<span class="guard">Guard</span></h1>
     <div class="stamp-meta">
-      v0.4.0<br>
+      v0.5.0<br>
       0 dependencies · Node ≥18<br>
       MIT
     </div>
@@ -469,26 +480,18 @@
        <span class="dim">→ `locked` is pinned to `false` instead of being derived from the user's</span>
        <span class="dim">→ subscription.</span>
 
-  <span class="high">🟠 HIGH</span>  Email verification is turned off  <span class="dim">email-verification-disabled</span>
-
-     New accounts become active without proving they own the email address. One
-     person can create unlimited accounts, and password resets can be aimed at
-     addresses nobody controls.
-
-     <span class="path">supabase/config.toml:226</span>
-       enable_confirmations = false
-       <span class="dim">→ Detected because Supabase config has confirmations disabled.</span>
-     <span class="path">supabase/config.toml:261</span>
-       enable_confirmations = false
-       <span class="dim">→ Detected because Supabase config has confirmations disabled.</span>
-
-  Result: <span class="crit">2 critical</span> · <span class="high">2 high</span>
+  Result: <span class="crit">2 critical</span>
 
   ✗ Blocking. Fix these before shipping, or add an allow entry to .prodguardrc.json.</pre>
       </div>
       <figcaption>The complete, unedited output from the app this happened to; only the path is anonymised. Exit code 1, so CI stops.</figcaption>
     </figure>
     <div class="verdict">Blocking · exit 1</div>
+    <p class="honest">An audit of this tool found that the email-verification finding it used to
+      report here was a false positive — <code>supabase/config.toml</code> configures the local dev stack, and
+      ships that setting disabled by default in every project. It was removed. The half of my incident that
+      happened in the Supabase dashboard is not in the repository at all, so no repo scanner can catch it;
+      this catches the half that is.</p>
   </section>
 
   <div class="contract">

@@ -70,7 +70,11 @@ export function collectFiles(root) {
         path: full,
         rel,
         text,
-        lines: text.split('\n'),
+        get lines() {
+          // Built on demand; eagerly duplicating every file doubled memory.
+          if (!this._lines) this._lines = this.text.split('\n')
+          return this._lines
+        },
         // Prose files quote broken code on purpose — a README showing
         // `const locked = false` as an example is documentation, not a bug.
         // Only the rules that hunt for literal secrets should read them.
@@ -83,13 +87,50 @@ export function collectFiles(root) {
   return out
 }
 
-/** Line number (1-indexed) of a character offset within a file. */
+/**
+ * Line number (1-indexed) of a character offset. Counting newlines from zero on
+ * every match is O(size x matches) — 14 seconds on one large file — so the
+ * offsets are indexed once and binary-searched thereafter.
+ */
 export function lineOf(file, index) {
-  let line = 1
-  for (let i = 0; i < index && i < file.text.length; i++) {
-    if (file.text.charCodeAt(i) === 10) line++
+  if (!file._nl) {
+    const nl = []
+    for (let i = 0; i < file.text.length; i++) if (file.text.charCodeAt(i) === 10) nl.push(i)
+    file._nl = nl
   }
-  return line
+  const nl = file._nl
+  let lo = 0
+  let hi = nl.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (nl[mid] < index) lo = mid + 1
+    else hi = mid
+  }
+  return lo + 1
+}
+
+/**
+ * Anything that looks like a credential is masked before it can reach a
+ * terminal or a CI log. This runs on EVERY snippet from EVERY rule — relying on
+ * individual rules to remember is how a scanner ends up printing the key it was
+ * hired to protect.
+ */
+const SECRET_SHAPES = [
+  /\b(sk_live_|rk_live_|sk_test_|whsec_|sk-ant-api|sk-proj-|xox[abpsr]-)[A-Za-z0-9_-]{8,}/g,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{6,}/g,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
+  /:\/\/[^:@/\s]+:[^@/\s]{3,}@/g,
+  /\b([A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD|PWD))\s*[=:]\s*["']?([^\s"';,]{12,})/g,
+]
+
+export function redactSecrets(line) {
+  let out = String(line)
+  out = out.replace(SECRET_SHAPES[5], (m, k) => `${k}=…redacted…`)
+  for (const re of SECRET_SHAPES.slice(0, 5)) {
+    out = out.replace(re, (m) => m.slice(0, 8) + '…redacted…')
+  }
+  return out
 }
 
 /**
@@ -116,7 +157,14 @@ export function loadConfig(root) {
   if (!existsSync(path)) return defaults
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8'))
-    return { ...defaults, ...parsed }
+    const merged = { ...defaults, ...parsed }
+    if (!Array.isArray(merged.allow)) {
+      if (merged.allow != null) {
+        console.error('prodguard: "allow" in .prodguardrc.json must be an array — ignoring it')
+      }
+      merged.allow = []
+    }
+    return merged
   } catch (err) {
     console.error(`prodguard: could not parse .prodguardrc.json — ${err.message}`)
     return defaults

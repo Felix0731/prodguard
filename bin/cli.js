@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { collectFiles, loadConfig, isAllowed } from '../src/scan.js'
 import { runRules, allRules } from '../src/rules.js'
 import { printReport, printJson } from '../src/report.js'
@@ -59,6 +59,20 @@ if (unknown.length) {
   process.exit(2)
 }
 
+// A gate that passes because the path was wrong is worse than no gate.
+let stat
+try {
+  stat = statSync(root)
+} catch {
+  console.error(`\n  prodguard: no such path — ${root}\n`)
+  process.exit(2)
+}
+if (!stat.isDirectory()) {
+  console.error(`\n  prodguard: not a directory — ${root}`)
+  console.error(`  Point it at a project folder, not a single file.\n`)
+  process.exit(2)
+}
+
 const config = loadConfig(root)
 const strict = flags.has('--strict') || config.strict === true
 
@@ -88,7 +102,8 @@ if (flags.has('--json')) {
 
 const critical = findings.filter((f) => f.severity === 'critical').length
 const high = findings.filter((f) => f.severity === 'high').length
-process.exit(critical > 0 || (strict && high > 0) ? 1 : 0)
+// exitCode rather than exit(), so piped --json output is flushed in full.
+process.exitCode = critical > 0 || (strict && high > 0) ? 1 : 0
 
 function usage() {
   console.log(`
