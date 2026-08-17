@@ -337,7 +337,7 @@ export function runRules(files) {
     try {
       hits = def.run(files) || []
     } catch (err) {
-      console.error(`shipguard: rule ${def.id} failed — ${err.message}`)
+      console.error(`prodguard: rule ${def.id} failed — ${err.message}`)
       continue
     }
     for (const hit of hits) {

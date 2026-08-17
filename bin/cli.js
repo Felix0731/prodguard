@@ -43,7 +43,7 @@ if (command === 'rules') {
 }
 
 if (command !== 'check') {
-  console.error(`shipguard: unknown command "${command}"`)
+  console.error(`prodguard: unknown command "${command}"`)
   usage()
   process.exit(2)
 }
@@ -66,13 +66,13 @@ process.exit(critical > 0 || (strict && high > 0) ? 1 : 0)
 
 function usage() {
   console.log(`
-  shipguard v${pkg.version}
+  prodguard v${pkg.version}
   Stops AI coding agents from disabling your paywall, your auth, and your database security.
 
   Usage
-    npx shipguard check [path]     Scan a repo (default: current directory)
-    npx shipguard init [path]      Add config + a GitHub Action that blocks bad merges
-    npx shipguard rules            List every check
+    npx prodguard check [path]     Scan a repo (default: current directory)
+    npx prodguard init [path]      Add config + a GitHub Action that blocks bad merges
+    npx prodguard rules            List every check
 
   Options
     --strict     Also fail on HIGH findings, not just CRITICAL

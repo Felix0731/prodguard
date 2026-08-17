@@ -1,14 +1,14 @@
-# ShipGuard
+# ProdGuard
 
 **Stops AI coding agents from disabling your paywall, your auth, and your database security.**
 
 ```bash
-npx shipguard check
+npx prodguard check
 ```
 
 Zero dependencies. Runs in about a second. Works with whatever agent you use — Claude Code, Cursor, Copilot, Codex.
 
-**[shipguard-ten.vercel.app](https://shipguard-ten.vercel.app)**
+**[prodguard-topaz.vercel.app](https://prodguard-topaz.vercel.app)**
 
 ---
 
@@ -54,11 +54,11 @@ No CWE numbers. If you can build the app, you can read the report.
 ## Usage
 
 ```bash
-npx shipguard check              # scan the current directory
-npx shipguard check ./my-app     # scan somewhere else
-npx shipguard check --strict     # also fail on HIGH, not just CRITICAL
-npx shipguard check --json       # machine-readable
-npx shipguard rules              # list every check
+npx prodguard check              # scan the current directory
+npx prodguard check ./my-app     # scan somewhere else
+npx prodguard check --strict     # also fail on HIGH, not just CRITICAL
+npx prodguard check --json       # machine-readable
+npx prodguard rules              # list every check
 ```
 
 Exit code is `1` when something blocking is found, so it works in CI as-is.
@@ -66,7 +66,7 @@ Exit code is `1` when something blocking is found, so it works in CI as-is.
 ## Put it in front of your agent
 
 ```bash
-npx shipguard init
+npx prodguard init
 ```
 
 Writes a config file and a GitHub Action that runs on every pull request — **including the ones your agent opens**. Commit both and dangerous changes stop merging.
@@ -74,12 +74,12 @@ Writes a config file and a GitHub Action that runs on every pull request — **i
 Want it even earlier, before a commit is even made:
 
 ```bash
-echo 'npx shipguard check' >> .husky/pre-commit
+echo 'npx prodguard check' >> .husky/pre-commit
 ```
 
 ## Configuration
 
-`.shipguardrc.json`:
+`.prodguardrc.json`:
 
 ```json
 {
@@ -103,7 +103,7 @@ It uses pattern matching, not full program analysis. It will miss creative ways 
 
 ## Contributing a rule
 
-Every rule lives in `src/rules.js` and is about twenty lines: an id, a severity, a plain-English explanation, and a `run(files)` that returns findings. If an agent broke something in your app in a way ShipGuard didn't catch, that's a rule worth adding — open an issue with the diff.
+Every rule lives in `src/rules.js` and is about twenty lines: an id, a severity, a plain-English explanation, and a `run(files)` that returns findings. If an agent broke something in your app in a way ProdGuard didn't catch, that's a rule worth adding — open an issue with the diff.
 
 ```bash
 node test/run.js

@@ -7,7 +7,7 @@ const CONFIG = `{
 }
 `
 
-const WORKFLOW = `name: ShipGuard
+const WORKFLOW = `name: ProdGuard
 
 # Runs on every pull request, including the ones your AI agent opens.
 on:
@@ -16,7 +16,7 @@ on:
     branches: [main, master]
 
 jobs:
-  shipguard:
+  prodguard:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,30 +24,30 @@ jobs:
         with:
           node-version: 20
       - name: Check for dangerous changes
-        run: npx --yes shipguard check
+        run: npx --yes prodguard check
 `
 
 export function init(root) {
-  const configPath = join(root, '.shipguardrc.json')
+  const configPath = join(root, '.prodguardrc.json')
   const workflowDir = join(root, '.github', 'workflows')
-  const workflowPath = join(workflowDir, 'shipguard.yml')
+  const workflowPath = join(workflowDir, 'prodguard.yml')
 
   let wrote = 0
 
   if (existsSync(configPath)) {
-    console.log(`  · .shipguardrc.json already exists, leaving it alone`)
+    console.log(`  · .prodguardrc.json already exists, leaving it alone`)
   } else {
     writeFileSync(configPath, CONFIG)
-    console.log(`  ✓ wrote .shipguardrc.json`)
+    console.log(`  ✓ wrote .prodguardrc.json`)
     wrote++
   }
 
   if (existsSync(workflowPath)) {
-    console.log(`  · .github/workflows/shipguard.yml already exists, leaving it alone`)
+    console.log(`  · .github/workflows/prodguard.yml already exists, leaving it alone`)
   } else {
     mkdirSync(workflowDir, { recursive: true })
     writeFileSync(workflowPath, WORKFLOW)
-    console.log(`  ✓ wrote .github/workflows/shipguard.yml`)
+    console.log(`  ✓ wrote .github/workflows/prodguard.yml`)
     wrote++
   }
 
@@ -55,6 +55,6 @@ export function init(root) {
   if (wrote) {
     console.log(`  Commit those two files and every future pull request gets checked.`)
   }
-  console.log(`  Run a scan right now with:  npx shipguard check`)
+  console.log(`  Run a scan right now with:  npx prodguard check`)
   console.log('')
 }

@@ -1,20 +1,20 @@
 {
-  "name": "shipguard",
+  "name": "prodguard",
   "version": "0.1.0",
   "description": "Stops AI coding agents from disabling your paywall, your auth, and your database security.",
   "license": "MIT",
   "author": "Felix LeBlanc",
-  "homepage": "https://shipguard-ten.vercel.app",
+  "homepage": "https://prodguard-topaz.vercel.app",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Felix0731/shipguard.git"
+    "url": "git+https://github.com/Felix0731/prodguard.git"
   },
   "bugs": {
-    "url": "https://github.com/Felix0731/shipguard/issues"
+    "url": "https://github.com/Felix0731/prodguard/issues"
   },
   "type": "module",
   "bin": {
-    "shipguard": "bin/cli.js"
+    "prodguard": "bin/cli.js"
   },
   "files": [
     "bin",

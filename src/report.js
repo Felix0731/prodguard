@@ -19,13 +19,13 @@ export function printReport(findings, { root, fileCount, strict }) {
   for (const f of findings) counts[f.severity]++
 
   console.log('')
-  console.log(bold('  ShipGuard') + dim(`  ·  ${fileCount} files scanned  ·  ${root}`))
+  console.log(bold('  ProdGuard') + dim(`  ·  ${fileCount} files scanned  ·  ${root}`))
   console.log('')
 
   if (!findings.length) {
     console.log(`  ${green('✓')} Nothing dangerous found.`)
     console.log('')
-    console.log(dim('  That means none of ShipGuard\'s checks fired — not that the app is perfect.'))
+    console.log(dim('  That means none of ProdGuard\'s checks fired — not that the app is perfect.'))
     console.log('')
     return
   }
@@ -62,7 +62,7 @@ export function printReport(findings, { root, fileCount, strict }) {
   const failing = counts.critical > 0 || (strict && counts.high > 0)
   if (failing) {
     console.log('')
-    console.log(`  ${red('✗')} Blocking. Fix these before shipping, or add an allow entry to ${bold('.shipguardrc.json')}.`)
+    console.log(`  ${red('✗')} Blocking. Fix these before shipping, or add an allow entry to ${bold('.prodguardrc.json')}.`)
   }
   console.log('')
 }

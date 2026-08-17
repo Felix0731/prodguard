@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="ShipGuard stops AI coding agents from disabling your paywall, your auth and your database security. Zero dependencies.">
-<meta property="og:title" content="ShipGuard">
+<meta name="description" content="ProdGuard stops AI coding agents from disabling your paywall, your auth and your database security. Zero dependencies.">
+<meta property="og:title" content="ProdGuard">
 <meta property="og:description" content="Your AI agent can write code. It should not be able to quietly turn off your paywall and deploy it.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128737;</text></svg>">
-<title>ShipGuard</title>
+<title>ProdGuard</title>
 <style>
   :root {
     --paper: #F5F4F1;
@@ -353,7 +353,7 @@
   </p>
 
   <div class="install">
-    <span class="prompt">$</span><span>npx shipguard check</span><span class="cursor" aria-hidden="true"></span>
+    <span class="prompt">$</span><span>npx prodguard check</span><span class="cursor" aria-hidden="true"></span>
   </div>
 
   <section>
@@ -378,9 +378,9 @@
     <h2>Scanning the app it happened to</h2>
     <figure>
       <div class="terminal">
-<pre><span class="dim">$ npx shipguard check ~/my-app</span>
+<pre><span class="dim">$ npx prodguard check ~/my-app</span>
 
-  ShipGuard  <span class="dim">·  77 files scanned</span>
+  ProdGuard  <span class="dim">·  77 files scanned</span>
 
   <span class="crit">🔴 CRITICAL</span>  Paid features are unlocked for everyone  <span class="dim">paywall-disabled</span>
 
@@ -462,17 +462,17 @@
   <section>
     <span class="eyebrow">Put it in front of the agent</span>
     <h2>One command wires it into CI</h2>
-    <div class="snippet">$ npx shipguard init
+    <div class="snippet">$ npx prodguard init
 
-  ✓ wrote .shipguardrc.json
-  ✓ wrote .github/workflows/shipguard.yml</div>
+  ✓ wrote .prodguardrc.json
+  ✓ wrote .github/workflows/prodguard.yml</div>
     <p>
       That workflow runs on every pull request — <strong>including the ones your agent opens</strong>. Dangerous
       changes stop merging instead of stopping your revenue.
     </p>
     <p>Want it earlier, before a commit even exists:</p>
     <div class="snippet"><span class="comment"># .husky/pre-commit</span>
-npx shipguard check</div>
+npx prodguard check</div>
   </section>
 
   <section>
@@ -501,7 +501,7 @@ npx shipguard check</div>
   </section>
 
   <footer>
-    <span>ShipGuard · MIT</span>
+    <span>ProdGuard · MIT</span>
     <span>Built after an agent shipped a broken paywall</span>
   </footer>
 

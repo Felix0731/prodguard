@@ -103,13 +103,13 @@ export function* matches(file, regex) {
 
 export function loadConfig(root) {
   const defaults = { allow: [], strict: false }
-  const path = join(root, '.shipguardrc.json')
+  const path = join(root, '.prodguardrc.json')
   if (!existsSync(path)) return defaults
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8'))
     return { ...defaults, ...parsed }
   } catch (err) {
-    console.error(`shipguard: could not parse .shipguardrc.json — ${err.message}`)
+    console.error(`prodguard: could not parse .prodguardrc.json — ${err.message}`)
     return defaults
   }
 }
