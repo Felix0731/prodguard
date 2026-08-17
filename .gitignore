@@ -8,3 +8,6 @@ node_modules/
 
 # Generated at test time; a literal sk_live_ string trips GitHub secret scanning
 test/fixtures/bad/src/pages/keys.js
+
+# Local launch draft, not part of the package
+REDDIT_POST.txt
