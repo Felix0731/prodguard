@@ -440,48 +440,10 @@
     paywall gates pinned open, unverified webhooks, exposed service-role keys, RLS switched off, committed
     live keys, email verification disabled, destructive migrations.</p>
 
-  <div class="install">
-    <span class="prompt">$</span><span>npx prodguard check</span><span class="cursor" aria-hidden="true"></span>
-  </div>
-
-  <p class="tryit">Not ready to point it at your own code?
-    <code>npx prodguard check --demo</code> runs all nine against a deliberately broken example app.</p>
-
-  <div class="contract">
-    <p class="contract-head">What `check` does, locally, in under a second:</p>
-    <ul>
-      <li><strong>Reads</strong> source files in the directory you point it at, and nothing outside it.</li>
-      <li><strong>Writes nothing.</strong> The one exception is <code>init</code>, which creates two config files and says so.</li>
-      <li><strong>Zero network requests.</strong> No telemetry, no uploads, no account, no sign-up.</li>
-      <li><strong>Never executes your code.</strong> It matches patterns in text; it does not import or run your app.</li>
-      <li><strong>Zero dependencies</strong> — there is no transitive supply chain to audit.</li>
-    </ul>
-    <p class="contract-links">
-      <a href="https://github.com/Felix0731/prodguard">source on GitHub</a> ·
-      <a href="https://www.npmjs.com/package/prodguard">package on npm</a>
-    </p>
-  </div>
 
   <section>
-    <span class="eyebrow">Why this exists</span>
-    <h2>It already happened to me</h2>
-    <p>
-      I let an AI agent work on my production SaaS. It disabled the payment paywall, turned off email
-      verification on the live database, and deployed both.
-    </p>
-    <p>
-      I found out two weeks later.
-    </p>
-    <p>
-      Nothing caught it. Not the agent, not code review — I <em>was</em> the code review, and I approved the
-      diff without understanding what it did. The tests passed, because there were no tests on billing.
-      The app looked fine, because from the outside a broken paywall looks exactly like a working one.
-    </p>
-  </section>
-
-  <section>
-    <span class="eyebrow">Real output</span>
-    <h2>Scanning the app it happened to</h2>
+    <span class="eyebrow">What it actually prints</span>
+    <h2>Run against the app it happened to</h2>
     <figure>
       <div class="terminal">
 <pre><span class="dim">$ npx prodguard check ~/my-app</span>
@@ -512,6 +474,46 @@
     </figure>
     <div class="verdict">Blocking · exit 1</div>
   </section>
+
+  <div class="contract">
+    <p class="contract-head">What `check` does, locally, in under a second:</p>
+    <ul>
+      <li><strong>Reads</strong> source files in the directory you point it at, and nothing outside it.</li>
+      <li><strong>Writes nothing.</strong> The one exception is <code>init</code>, which creates two config files and says so.</li>
+      <li><strong>Zero network requests.</strong> No telemetry, no uploads, no account, no sign-up.</li>
+      <li><strong>Never executes your code.</strong> It matches patterns in text; it does not import or run your app.</li>
+      <li><strong>Zero dependencies</strong> — there is no transitive supply chain to audit.</li>
+    </ul>
+    <p class="contract-links">
+      <a href="https://github.com/Felix0731/prodguard">source on GitHub</a> ·
+      <a href="https://www.npmjs.com/package/prodguard">package on npm</a>
+    </p>
+  </div>
+
+  <div class="install">
+    <span class="prompt">$</span><span>npx prodguard check</span><span class="cursor" aria-hidden="true"></span>
+  </div>
+
+  <p class="tryit">Not ready to point it at your own code?
+    <code>npx prodguard check --demo</code> runs all nine against a deliberately broken example app.</p>
+
+  <section>
+    <span class="eyebrow">Why this exists</span>
+    <h2>It already happened to me</h2>
+    <p>
+      I let an AI agent work on my production SaaS. It disabled the payment paywall, turned off email
+      verification on the live database, and deployed both.
+    </p>
+    <p>
+      I found out two weeks later.
+    </p>
+    <p>
+      Nothing caught it. Not the agent, not code review — I <em>was</em> the code review, and I approved the
+      diff without understanding what it did. The tests passed, because there were no tests on billing.
+      The app looked fine, because from the outside a broken paywall looks exactly like a working one.
+    </p>
+  </section>
+
 
   <section>
     <span class="eyebrow">Nine checks</span>
