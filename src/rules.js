@@ -300,6 +300,42 @@ function redact(line) {
 }
 
 /* ------------------------------------------------------------------ *
+ * 9. A credential file sitting in the repo
+ * ------------------------------------------------------------------ */
+rule({
+  id: 'credential-file-committed',
+  severity: 'critical',
+  title: 'A credentials file is in your repository',
+  plain:
+    'Recovery codes, backup codes and key exports are account master keys — most of them bypass ' +
+    'two-factor authentication entirely. In a repo they get pushed, forked, cloned and backed up. ' +
+    'Keep them in a password manager or your OS keychain, never in a project folder.',
+  run(files) {
+    const found = []
+    // Named like a credential dump...
+    const NAME = /(^|\/)[^/]*(recovery[-_. ]?codes?|backup[-_. ]?codes?|2fa[-_. ]?codes?|credentials?|secrets?|private[-_. ]?key)[^/]*\.(txt|csv|json|md|text)$/i
+    // ...and actually containing secret-shaped lines, so we don't flag a doc
+    // that merely discusses credentials.
+    const SECRETY = /^[0-9a-f]{16,}$|^[A-Za-z0-9+/]{32,}={0,2}$|BEGIN (RSA |OPENSSH |EC )?PRIVATE KEY/m
+
+    for (const file of files) {
+      if (!NAME.test(file.rel)) continue
+      if (/\.example$|\.sample$|\.template$/.test(file.rel)) continue
+      if (!SECRETY.test(file.text)) continue
+      found.push({
+        file: file.rel,
+        line: 1,
+        snippet: '',
+        detail:
+          'This file is named like a credential export and contains secret-shaped values. ' +
+          'Move it out of the repository, then rotate whatever it holds — assume it is already exposed.',
+      })
+    }
+    return found
+  },
+})
+
+/* ------------------------------------------------------------------ *
  * 8. Destructive migration
  * ------------------------------------------------------------------ */
 rule({

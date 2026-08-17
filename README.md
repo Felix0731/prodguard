@@ -33,6 +33,7 @@ So this checks for the specific things that quietly cost you money or leak your 
 | `live-secret-committed` | 🔴 critical | A live Stripe/Anthropic/OpenAI key is in your source tree |
 | `rls-never-enabled` | 🟠 high | A table was created and RLS was never turned on for it |
 | `email-verification-disabled` | 🟠 high | Accounts go live without proving they own the email |
+| `credential-file-committed` | 🔴 critical | A recovery-codes or credentials file is sitting in the repo |
 | `destructive-migration` | 🟠 high | A migration drops or truncates a table |
 
 Reports are written for humans, not scanners:

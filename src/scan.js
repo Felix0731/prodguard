@@ -12,6 +12,8 @@ const SKIP_DIRS = new Set([
 const TEXT_EXT = new Set([
   '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
   '.sql', '.json', '.toml', '.yml', '.yaml', '.svelte', '.vue', '.astro',
+  // Plain-text formats: people paste credential exports into these.
+  '.txt', '.text', '.csv', '.md',
 ])
 
 // A file is worth reading if it has a known code extension, or it's a dotenv
