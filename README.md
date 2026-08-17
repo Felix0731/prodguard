@@ -14,13 +14,11 @@ Zero dependencies. Runs in about a second. Works with whatever agent you use —
 
 ## Why this exists
 
-I let an AI agent work on my production SaaS. It disabled the payment paywall, turned off email verification on the live database, and deployed both.
+An AI agent asked to make something work will often take the fastest path, and the fastest path is frequently to remove whatever is blocking it. RLS switched off to fix a query. A paywall gate pinned to `false` for a demo. Email confirmations disabled to speed up testing.
 
-I found out two weeks later.
+None of it looks wrong afterwards. The tests still pass, because there are rarely tests on billing. The app still looks fine, because from the outside a broken paywall looks exactly like a working one.
 
-Nothing caught it. Not the agent, not code review — I *was* the code review, and I approved the diff without understanding what it did. The tests passed, because there were no tests on billing. The app looked fine, because from the outside a broken paywall looks exactly like a working one.
-
-So this checks for the specific things that quietly cost you money or leak your users' data, and it fails your build when it finds them.
+This checks for that specific class of change — the things that quietly cost money or leak data — and fails your build when it finds them.
 
 ## Never used a terminal command? Start here
 
