@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to tell if an AI coding agent broke something in your app</title>
+<meta name="description" content="Agents remove guards rather than break features, so the app keeps working. The six changes worth checking, the git commands that find deletions, and why code review and tests miss them.">
+<link rel="canonical" href="https://prodguard.vercel.app/did-an-ai-agent-break-my-app">
+<meta property="og:title" content="How to tell if an AI coding agent broke something in your app">
+<meta property="og:description" content="Agents remove guards rather than break features, so the app keeps working. The six changes worth checking, the git commands that find deletions, and why code review and tests miss them.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128737;</text></svg>">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+  {"@type":"Question","name":"How do I tell if an AI coding agent broke something in my app?","acceptedAnswer":{"@type":"Answer","text":"Look for guards that were removed rather than features that stopped working: a paywall gate pinned to false, Row Level Security disabled, Stripe webhook signature verification deleted, a service-role key given a public env prefix, email confirmation switched off, or an auth middleware matcher emptied. Use git log -S to find commits that deleted a string, since searching current code cannot find a removal."}},
+  {"@type":"Question","name":"Why did code review and tests miss the change an AI agent made?","acceptedAnswer":{"@type":"Answer","text":"Because nothing appears broken. A disabled paywall renders identically to a working one, and billing and auth are the areas least likely to have test coverage. Deletions also review more easily than additions, since a smaller diff reads as a tidy-up."}}
+]}
+</script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #F5F4F1;
+    --surface: #FFFFFF;
+    --ink: #1A1714;
+    --muted: #6E675F;
+    --rule: #DEDBD4;
+    --accent: #C8322A;
+    --amber: #8F5A08;
+    --pass: #2F6B4F;
+    --term-bg: #201D1A;
+    --term-ink: #E8E4DC;
+    --term-dim: #8D857A;
+    --on-accent: #FFF6F4;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+
+    --step--1: clamp(0.78rem, 0.76rem + 0.1vw, 0.83rem);
+    --step-0: clamp(1rem, 0.97rem + 0.15vw, 1.08rem);
+    --step-1: clamp(1.2rem, 1.13rem + 0.35vw, 1.4rem);
+    --step-2: clamp(1.5rem, 1.36rem + 0.7vw, 2rem);
+    --step-3: clamp(2rem, 1.7rem + 1.5vw, 3.1rem);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #161513;
+      --surface: #1E1D1A;
+      --ink: #F0EEE9;
+      --muted: #9E968B;
+      --rule: #34322D;
+      --accent: #F0564A;
+      --amber: #E39A2B;
+      --pass: #6BBF92;
+      --term-bg: #100F0E;
+      --term-ink: #E8E4DC;
+      --term-dim: #8A8175;
+      --on-accent: #1A0705;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #161513;
+    --surface: #1E1D1A;
+    --ink: #F0EEE9;
+    --muted: #9E968B;
+    --rule: #34322D;
+    --accent: #F0564A;
+    --amber: #E39A2B;
+    --pass: #6BBF92;
+    --term-bg: #100F0E;
+    --term-ink: #E8E4DC;
+    --term-dim: #8A8175;
+    --on-accent: #1A0705;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: var(--step-0);
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+  }
+
+  /* ---------- stamped header ---------- */
+
+  .stamp {
+    border-bottom: 2px solid var(--ink);
+    padding: 3.5rem 0 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+  }
+
+  .wordmark {
+    font-family: var(--mono);
+    font-size: var(--step-3);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin: 0;
+  }
+
+  .wordmark .guard { color: var(--accent); }
+
+  .stamp-meta {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    text-align: right;
+    line-height: 1.9;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .lede {
+    font-size: var(--step-1);
+    line-height: 1.45;
+    text-wrap: balance;
+    margin: 1.75rem 0 0;
+    max-width: 34ch;
+  }
+
+  .lede strong { font-weight: 600; }
+
+  .stack {
+    margin: 1.25rem 0 0;
+    font-size: var(--step--1);
+    font-family: var(--mono);
+    line-height: 1.7;
+    color: var(--muted);
+    max-width: 60ch;
+  }
+
+  .stack strong { color: var(--ink); font-weight: 600; }
+
+  .tryit {
+    margin: 0.7rem 0 0;
+    font-size: var(--step--1);
+    color: var(--muted);
+    max-width: 62ch;
+  }
+
+  .tryit code {
+    font-family: var(--mono);
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 0.1rem 0.35rem;
+  }
+
+  /* ---------- trust contract ---------- */
+
+  .contract {
+    margin: 1.25rem 0 0;
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--pass);
+    background: var(--surface);
+    padding: 1.1rem 1.25rem;
+  }
+
+  .contract-head {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 0.75rem;
+    max-width: none;
+  }
+
+  .contract ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.45rem;
+    font-size: 0.95rem;
+  }
+
+  .contract li {
+    padding-left: 1.5rem;
+    position: relative;
+  }
+
+  .contract li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: var(--pass);
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+
+  .contract code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+  }
+
+  .steps {
+    counter-reset: step;
+    list-style: none;
+    margin: 1.5rem 0 0;
+    padding: 0;
+    display: grid;
+    gap: 1.6rem;
+  }
+
+  .steps > li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 2.6rem;
+    max-width: 64ch;
+  }
+
+  .steps > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0.05em;
+    width: 1.7rem;
+    height: 1.7rem;
+    display: grid;
+    place-items: center;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--paper);
+    background: var(--ink);
+    border-radius: 50%;
+  }
+
+  .steps .snippet { margin: 0.6rem 0; }
+  .steps b { font-weight: 600; }
+
+  kbd {
+    font-family: var(--mono);
+    font-size: 0.8em;
+    border: 1px solid var(--rule);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0.05em 0.35em;
+    background: var(--surface);
+  }
+
+  .muted-note {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: var(--step--1);
+    color: var(--muted);
+  }
+
+  .honest {
+    margin: 1rem 0 0;
+    font-size: var(--step--1);
+    color: var(--muted);
+    border-left: 2px solid var(--rule);
+    padding-left: 0.9rem;
+    max-width: 68ch;
+  }
+
+  .honest code { font-family: var(--mono); font-size: 0.9em; }
+
+  .contract-links {
+    margin: 0.9rem 0 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    max-width: none;
+  }
+
+  /* ---------- install line ---------- */
+
+  .install {
+    margin: 2rem 0 0;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    font-family: var(--mono);
+    font-size: var(--step-0);
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    padding: 0.85rem 1rem;
+    overflow-x: auto;
+  }
+
+  .install .prompt { color: var(--accent); user-select: none; }
+
+  .cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 1.05em;
+    background: var(--accent);
+    vertical-align: text-bottom;
+    animation: blink 1.15s step-end infinite;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cursor { animation: none; }
+  }
+
+  /* ---------- section scaffolding ---------- */
+
+  section { margin-top: 4rem; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin: 0 0 0.5rem;
+    display: block;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: var(--step-2);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    line-height: 1.15;
+    margin: 0 0 1.25rem;
+    text-wrap: balance;
+  }
+
+  p { margin: 0 0 1.1rem; max-width: 65ch; }
+  p:last-child { margin-bottom: 0; }
+
+  /* ---------- terminal ---------- */
+
+  figure { margin: 0; }
+
+  .terminal {
+    background: var(--term-bg);
+    color: var(--term-ink);
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.75;
+    padding: 1.4rem 1.5rem;
+    overflow-x: auto;
+    border-left: 3px solid var(--accent);
+  }
+
+  .terminal pre { margin: 0; white-space: pre; }
+  .terminal .dim { color: var(--term-dim); }
+  .terminal .crit { color: #F0564A; font-weight: 600; }
+  .terminal .high { color: #E39A2B; font-weight: 600; }
+  .terminal .path { color: #8FB8D8; }
+  .terminal .code { color: var(--term-ink); }
+
+  figcaption {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    margin-top: 0.75rem;
+    line-height: 1.6;
+  }
+
+  .verdict {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: var(--accent);
+    color: var(--on-accent);
+    padding: 0.35rem 0.7rem;
+    margin-top: 1.25rem;
+  }
+
+  /* ---------- checks table ---------- */
+
+  .checks {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+  }
+
+  .checks th {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    font-weight: 400;
+    text-align: left;
+    padding: 0 0 0.6rem;
+    border-bottom: 1px solid var(--ink);
+  }
+
+  .checks td {
+    padding: 0.85rem 1rem 0.85rem 0;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+
+  .checks td.sev {
+    width: 1px;
+    padding-right: 1rem;
+    white-space: nowrap;
+  }
+
+  .sev-tag {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-left: 3px solid currentColor;
+    padding-left: 0.5rem;
+    display: block;
+  }
+
+  .sev-tag.c { color: var(--accent); }
+  .sev-tag.h { color: var(--amber); }
+
+  .checks code {
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    color: var(--muted);
+    display: block;
+    margin-top: 0.2rem;
+  }
+
+  /* ---------- code blocks ---------- */
+
+  .snippet {
+    white-space: pre;
+    margin: 0 0 1.1rem;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.8;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 1rem 1.2rem;
+    overflow-x: auto;
+    margin: 0 0 1.1rem;
+  }
+
+  .snippet .comment { color: var(--muted); }
+
+  /* ---------- limits ---------- */
+
+  .limits {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .limits li {
+    padding-left: 1.6rem;
+    position: relative;
+    max-width: 65ch;
+  }
+
+  .limits li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-family: var(--mono);
+  }
+
+  /* ---------- footer ---------- */
+
+  footer {
+    margin-top: 5rem;
+    padding-top: 1.25rem;
+    border-top: 2px solid var(--ink);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="stamp">
+    <h1 class="wordmark" style="font-size:var(--step-2)"><a href="/" style="color:inherit;text-decoration:none">Prod<span class="guard">Guard</span></a></h1>
+    <div class="stamp-meta">Guide</div>
+  </header>
+
+  <h2 style="margin-top:2.5rem">How do I tell if an AI coding agent broke something in my app?</h2>
+
+  <p class="lede" style="max-width:none;font-size:var(--step-0);line-height:1.6">
+    Look for guards that were removed rather than features that stopped working. An agent asked to make
+    something work will often take the shortest path, and the shortest path is frequently to delete whatever
+    is blocking it. The app keeps working — that is the problem.</p>
+
+  <p>Ordinary bugs announce themselves. This class does not: the tests still pass, the page still renders,
+    and nothing errors. A paywall that has been switched off looks exactly like a paywall nobody has hit yet.</p>
+
+  <section>
+    <span class="eyebrow">What to look for</span>
+    <h2>The changes worth grepping for</h2>
+
+    <p>These are the ones that cost money or expose data, roughly in order of how often they show up:</p>
+
+    <table class="checks">
+      <thead><tr><th class="sev">Change</th><th>Why an agent makes it</th></tr></thead>
+      <tbody>
+        <tr><td class="sev"><span class="sev-tag c">Gate pinned open</span></td>
+          <td><code>const locked = false</code>, <code>hasAccess = true</code>. Asked to "show the dashboard
+            in the demo", and the subscription check was in the way.</td></tr>
+        <tr><td class="sev"><span class="sev-tag c">RLS disabled</span></td>
+          <td>A query returned nothing, so the row-security policy got switched off instead of fixed.
+            <a href="/check-supabase-rls">How to check yours.</a></td></tr>
+        <tr><td class="sev"><span class="sev-tag c">Webhook verification removed</span></td>
+          <td>Signature checks failed in local testing, so the check came out.
+            <a href="/verify-stripe-webhook">How to check yours.</a></td></tr>
+        <tr><td class="sev"><span class="sev-tag c">Admin key moved client-side</span></td>
+          <td>A server call was awkward, so the service-role key got a <code>VITE_</code> or
+            <code>NEXT_PUBLIC_</code> prefix to make it reachable — which ships it to every browser.</td></tr>
+        <tr><td class="sev"><span class="sev-tag h">Email confirmation off</span></td>
+          <td>Signup testing was slow with a confirmation step.</td></tr>
+        <tr><td class="sev"><span class="sev-tag h">Auth middleware narrowed</span></td>
+          <td>A redirect loop got "fixed" by emptying the route matcher, unprotecting everything it covered.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <span class="eyebrow">Reading the history</span>
+    <h2>Finding it in git</h2>
+
+    <p>If you know roughly when the agent worked, look at what it removed rather than what it added:</p>
+
+    <pre class="snippet" tabindex="0" role="region" aria-label="Search git history for removed guards">git log -p --since="3 weeks ago" -S "constructEvent" -- .
+git log -p --since="3 weeks ago" -S "ENABLE ROW LEVEL SECURITY" -- .
+git log --since="3 weeks ago" -p | grep -E "^-.*(locked|hasAccess|isPro|verify|auth)"</pre>
+
+    <p><code>-S</code> shows commits where the count of a string changed, so it finds the commit that deleted
+      a line, which a plain search of the current code never will.</p>
+
+    <p>The leading <code>-</code> in the last command is the point: you are looking for removals. Additions
+      get reviewed; deletions slide past, because a diff with fewer lines reads as a tidy-up.</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">Why review missed it</span>
+    <h2>This is not a discipline problem</h2>
+
+    <p>The usual advice — read the diff, write tests — assumes you can recognise the danger on sight. The
+      people shipping fastest with agents are frequently not senior engineers, and a line like
+      <code>const locked = false</code> does not look alarming unless you already know what
+      <code>locked</code> gates.</p>
+
+    <p>Tests do not help either, because billing and auth are the two areas least likely to have any. A test
+      suite that covers your UI thoroughly will pass with the paywall wide open.</p>
+  </section>
+
+  <section>
+    <span class="eyebrow">Checking automatically</span>
+    <h2>One command</h2>
+
+    <p>ProdGuard reads your repository and reports this specific class of change — twelve checks, in plain
+      English rather than security jargon, with the file and line for each:</p>
+
+    <pre class="snippet" tabindex="0" role="region" aria-label="Run ProdGuard">npx prodguard check --demo   # see what it catches, without touching your code
+npx prodguard check          # then run it on yours</pre>
+
+    <p>It is free, MIT, has zero dependencies and makes no network requests.
+      <code>npx prodguard init</code> adds a GitHub Action so the check runs on every pull request —
+      including the ones your agent opens.</p>
+
+    <p class="muted-note">It reads text rather than parsing your program, so it is a safety net rather than a
+      proof, and anything configured outside your repository — in a hosting dashboard, say — is invisible to
+      it. <a href="/">The full limits are written out here.</a></p>
+  </section>
+
+  <footer>
+    <span><a href="/">ProdGuard</a> · <a href="https://github.com/Felix0731/prodguard">GitHub</a> · MIT</span>
+    <span>Guardrails for AI-written production code</span>
+  </footer>
+</div>
+</body>
+</html>
