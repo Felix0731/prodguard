@@ -6,6 +6,7 @@ import { collectFiles, loadConfig, isAllowed } from '../src/scan.js'
 import { runRules, allRules } from '../src/rules.js'
 import { printReport, printJson } from '../src/report.js'
 import { init } from '../src/init.js'
+import { demoFiles } from '../src/demo.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8'))
@@ -51,6 +52,21 @@ if (command !== 'check') {
 const config = loadConfig(root)
 const strict = flags.has('--strict') || config.strict === true
 
+// `--demo` runs every rule against a small in-memory app so a stranger can see
+// exactly what the tool does without pointing it at their own codebase.
+if (flags.has('--demo')) {
+  const findings = runRules(demoFiles())
+  if (flags.has('--json')) printJson(findings, { root: 'demo', fileCount: demoFiles().length, strict })
+  else {
+    console.log('')
+    console.log('  Running against a deliberately broken example app — your files are untouched.')
+    printReport(findings, { root: 'demo app', fileCount: demoFiles().length, strict })
+    console.log('  Point it at something real with:  npx prodguard check .')
+    console.log('')
+  }
+  process.exit(0)
+}
+
 const files = collectFiles(root)
 const findings = runRules(files).filter((f) => !isAllowed(f, config.allow))
 
@@ -72,6 +88,7 @@ function usage() {
   Usage
     npx prodguard check [path]     Scan a repo (default: current directory)
     npx prodguard init [path]      Add config + a GitHub Action that blocks bad merges
+    npx prodguard check --demo     See every check fire on a broken example app
     npx prodguard rules            List every check
 
   Options

@@ -55,6 +55,7 @@ No CWE numbers. If you can build the app, you can read the report.
 ## Usage
 
 ```bash
+npx prodguard check --demo       # see all nine fire on a broken example app
 npx prodguard check              # scan the current directory
 npx prodguard check ./my-app     # scan somewhere else
 npx prodguard check --strict     # also fail on HIGH, not just CRITICAL

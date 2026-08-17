@@ -133,6 +133,21 @@
 
   .stack strong { color: var(--ink); font-weight: 600; }
 
+  .tryit {
+    margin: 0.7rem 0 0;
+    font-size: var(--step--1);
+    color: var(--muted);
+    max-width: 62ch;
+  }
+
+  .tryit code {
+    font-family: var(--mono);
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 0.1rem 0.35rem;
+  }
+
   /* ---------- trust contract ---------- */
 
   .contract {
@@ -421,7 +436,7 @@
     Your AI agent can write code. It should not be able to <strong>quietly turn off your paywall</strong> and deploy it.
   </p>
 
-  <p class="stack">Nine checks for <strong>Supabase</strong> · <strong>Stripe</strong> · <strong>Vercel</strong> projects —
+  <p class="stack">A read-only command that scans a <strong>Supabase</strong> · <strong>Stripe</strong> · <strong>Vercel</strong> repo in about a second and fails your build on nine things:
     paywall gates pinned open, unverified webhooks, exposed service-role keys, RLS switched off, committed
     live keys, email verification disabled, destructive migrations.</p>
 
@@ -429,8 +444,11 @@
     <span class="prompt">$</span><span>npx prodguard check</span><span class="cursor" aria-hidden="true"></span>
   </div>
 
+  <p class="tryit">Not ready to point it at your own code?
+    <code>npx prodguard check --demo</code> runs all nine against a deliberately broken example app.</p>
+
   <div class="contract">
-    <p class="contract-head">Before running an unknown CLI on your repo — exactly what this one does:</p>
+    <p class="contract-head">What `check` does, locally, in under a second:</p>
     <ul>
       <li><strong>Reads</strong> source files in the directory you point it at, and nothing outside it.</li>
       <li><strong>Writes nothing.</strong> The one exception is <code>init</code>, which creates two config files and says so.</li>
@@ -439,7 +457,6 @@
       <li><strong>Zero dependencies</strong> — there is no transitive supply chain to audit.</li>
     </ul>
     <p class="contract-links">
-      Read it before you run it — it's about 700 lines:
       <a href="https://github.com/Felix0731/prodguard">source on GitHub</a> ·
       <a href="https://www.npmjs.com/package/prodguard">package on npm</a>
     </p>
@@ -592,7 +609,7 @@ npx prodguard check</div>
       <li><strong>Not a linter.</strong> It ignores style entirely and only looks for changes that cost money or leak data.</li>
       <li><strong>Not a dashboard.</strong> Nothing to sign up for. No data leaves your machine.</li>
       <li><strong>Not a guarantee.</strong> A clean run means these specific checks didn't fire — not that your app is secure.</li>
-      <li><strong>Deliberately narrow.</strong> Eight patterns, tuned to stay quiet: it would rather miss a creative way of breaking these things than cry wolf on your build. Treat a finding as a prompt to look, not proof of a vulnerability — and if one is genuinely fine in your codebase, allow-list it by rule and path.</li>
+      <li><strong>Deliberately narrow.</strong> Eight patterns, tuned to stay quiet: tuned so a green build means something. It would rather stay silent on an exotic variant than block your CI over a guess. Treat a finding as a prompt to look, not proof of a vulnerability — and if one is genuinely fine in your codebase, allow-list it by rule and path.</li>
     </ul>
   </section>
 
