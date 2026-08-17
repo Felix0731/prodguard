@@ -65,6 +65,10 @@ expect(
   'docs quoting broken code do not fire (README.md in good/)',
   !good.some((f) => /README\.md/.test(f.file)),
 )
+expect(
+  'TextDecoder is not mistaken for an unverified JWT',
+  !good.some((f) => f.rule === 'jwt-not-verified'),
+)
 
 console.log('')
 if (failures) {

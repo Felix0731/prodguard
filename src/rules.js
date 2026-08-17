@@ -352,11 +352,14 @@ rule({
     'themselves saying they are an administrator.',
   run(files) {
     const found = []
-    const DECODE = /\b(?:jwt|jsonwebtoken|jose)?\.?decode\s*\(/g
+    // The receiver has to be a JWT library. Matching a bare `.decode(` also
+    // catches TextDecoder, base64 helpers and stream decoders — none of which
+    // are auth, and all of which appear in ordinary code.
+    const DECODE = /\b(?:jwt|jsonWebToken|jsonwebtoken|jose)\s*\.\s*decode\s*\(|\bdecodeJwt\s*\(/g
     for (const file of files) {
       if (file.isDoc) continue
       if (!/\.(js|jsx|ts|tsx|mjs|cjs)$/.test(file.rel)) continue
-      if (!/jwt|jsonwebtoken|jose|token/i.test(file.text)) continue
+      if (!/jwt|jsonwebtoken|jose/i.test(file.text)) continue
       // A file that verifies somewhere is doing the right thing.
       if (/\.verify\s*\(|jwtVerify\s*\(|verifyIdToken\s*\(/.test(file.text)) continue
       for (const hit of matches(file, DECODE)) {
