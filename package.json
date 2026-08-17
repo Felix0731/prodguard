@@ -30,12 +30,20 @@
     "ai-agents",
     "claude-code",
     "cursor",
+    "copilot",
     "supabase",
     "stripe",
+    "firebase",
     "rls",
+    "row-level-security",
+    "jwt",
+    "cors",
     "security",
+    "static-analysis",
+    "devsecops",
     "guardrails",
-    "ci"
+    "ci",
+    "nextjs"
   ],
   "engines": {
     "node": ">=18"
