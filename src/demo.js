@@ -26,6 +26,18 @@ const FILES = [
     text: `export const stripeKey = "${'sk_' + 'live_' + '51EXAMPLEKEYNOTREAL000000'}"\n`,
   },
   {
+    rel: 'src/lib/auth.js',
+    text: `import jwt from 'jsonwebtoken'\nexport function whoami(token) {\n  const claims = jwt.decode(token)\n  return claims.role\n}\n`,
+  },
+  {
+    rel: 'firestore.rules',
+    text: `service cloud.firestore {\n  match /databases/{db}/documents {\n    match /{document=**} { allow read, write: if true; }\n  }\n}\n`,
+  },
+  {
+    rel: 'api/cors.js',
+    text: `export default function handler(req, res) {\n  res.setHeader('Access-Control-Allow-Origin', '*')\n  res.setHeader('Access-Control-Allow-Credentials', 'true')\n  res.json({ ok: true })\n}\n`,
+  },
+  {
     rel: 'recovery_codes.txt',
     text: `a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90\nf0e1d2c3b4a59687f0e1d2c3b4a59687f0e1d2c3b4a59687f0e1d2c3b4a59687\n`,
   },

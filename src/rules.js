@@ -340,6 +340,100 @@ rule({
 })
 
 /* ------------------------------------------------------------------ *
+ * 10. A token that is decoded but never verified
+ * ------------------------------------------------------------------ */
+rule({
+  id: 'jwt-not-verified',
+  severity: 'critical',
+  title: 'Login tokens are read without checking the signature',
+  plain:
+    'Decoding a JWT reads what it claims to say; verifying it proves the claim came from you. ' +
+    'Code that only decodes will believe any token a visitor hands it — including one they wrote ' +
+    'themselves saying they are an administrator.',
+  run(files) {
+    const found = []
+    const DECODE = /\b(?:jwt|jsonwebtoken|jose)?\.?decode\s*\(/g
+    for (const file of files) {
+      if (file.isDoc) continue
+      if (!/\.(js|jsx|ts|tsx|mjs|cjs)$/.test(file.rel)) continue
+      if (!/jwt|jsonwebtoken|jose|token/i.test(file.text)) continue
+      // A file that verifies somewhere is doing the right thing.
+      if (/\.verify\s*\(|jwtVerify\s*\(|verifyIdToken\s*\(/.test(file.text)) continue
+      for (const hit of matches(file, DECODE)) {
+        if (isDiscussion(hit.snippet)) continue
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: 'This decodes a token but nothing in the file verifies its signature.',
+        })
+      }
+    }
+    return found
+  },
+})
+
+/* ------------------------------------------------------------------ *
+ * 11. Firebase security rules left wide open
+ * ------------------------------------------------------------------ */
+rule({
+  id: 'firebase-rules-open',
+  severity: 'critical',
+  title: 'Firebase rules allow anyone to read or write',
+  plain:
+    'A rule that always evaluates true means any person on the internet can read, overwrite ' +
+    'and delete this data without logging in. It is the Firebase equivalent of leaving Row Level ' +
+    'Security off.',
+  run(files) {
+    const found = []
+    const OPEN = /allow\s+(read|write|create|update|delete)[^;:]*:\s*if\s+true\b/gi
+    for (const file of files) {
+      if (!/\.rules$|firestore\.rules|storage\.rules|database\.rules\.json/i.test(file.rel)) continue
+      for (const hit of matches(file, OPEN)) {
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`allow ${hit.match[1]}: if true\` grants this to every visitor, signed in or not.`,
+        })
+      }
+    }
+    return found
+  },
+})
+
+/* ------------------------------------------------------------------ *
+ * 12. CORS opened to everyone while sending credentials
+ * ------------------------------------------------------------------ */
+rule({
+  id: 'cors-wildcard-credentials',
+  severity: 'high',
+  title: 'Any website can call this API with your users\' cookies',
+  plain:
+    'Allowing every origin while also allowing credentials lets a page the attacker controls make ' +
+    'requests to your API as your logged-in user, and read the answer. Browsers block this pairing ' +
+    'for good reason; forcing it back on re-opens the hole.',
+  run(files) {
+    const found = []
+    for (const file of files) {
+      if (file.isDoc) continue
+      if (!/\.(js|jsx|ts|tsx|mjs|cjs|json|yml|yaml|toml)$/.test(file.rel)) continue
+      const wildcard = /(Access-Control-Allow-Origin["'\s:=,]+\*)|(origin\s*:\s*["']\*["'])/i
+      const creds = /(Access-Control-Allow-Credentials["'\s:=,]+true)|(credentials\s*:\s*true)/i
+      if (!wildcard.test(file.text) || !creds.test(file.text)) continue
+      const anchor = [...matches(file, /Access-Control-Allow-Origin|origin\s*:\s*["']\*["']/i)][0] || { line: 1, snippet: '' }
+      found.push({
+        file: file.rel,
+        line: anchor.line,
+        snippet: anchor.snippet,
+        detail: 'This file allows every origin and also allows credentials on the same endpoint.',
+      })
+    }
+    return found
+  },
+})
+
+/* ------------------------------------------------------------------ *
  * 8. Destructive migration
  * ------------------------------------------------------------------ */
 rule({

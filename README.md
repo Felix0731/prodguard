@@ -34,6 +34,9 @@ So this checks for the specific things that quietly cost you money or leak your 
 | `rls-never-enabled` | 🟠 high | A table was created and RLS was never turned on for it |
 | `email-verification-disabled` | 🟠 high | Accounts go live without proving they own the email |
 | `credential-file-committed` | 🔴 critical | A recovery-codes or credentials file is sitting in the repo |
+| `jwt-not-verified` | 🔴 critical | Login tokens are decoded but never signature-checked |
+| `firebase-rules-open` | 🔴 critical | Firebase rules allow anyone to read or write |
+| `cors-wildcard-credentials` | 🟠 high | Any website can call your API with your users' cookies |
 | `destructive-migration` | 🟠 high | A migration drops or truncates a table |
 
 Reports are written for humans, not scanners:

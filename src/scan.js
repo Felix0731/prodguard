@@ -14,6 +14,8 @@ const TEXT_EXT = new Set([
   '.sql', '.json', '.toml', '.yml', '.yaml', '.svelte', '.vue', '.astro',
   // Plain-text formats: people paste credential exports into these.
   '.txt', '.text', '.csv', '.md',
+  // Firebase security rules
+  '.rules',
 ])
 
 // A file is worth reading if it has a known code extension, or it's a dotenv

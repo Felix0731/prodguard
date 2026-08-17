@@ -426,7 +426,7 @@
   <header class="stamp">
     <h1 class="wordmark">Prod<span class="guard">Guard</span></h1>
     <div class="stamp-meta">
-      v0.2.0<br>
+      v0.3.0<br>
       0 dependencies · Node ≥18<br>
       MIT
     </div>
@@ -436,9 +436,10 @@
     Your AI agent can write code. It should not be able to <strong>quietly turn off your paywall</strong> and deploy it.
   </p>
 
-  <p class="stack">A read-only command that scans a <strong>Supabase</strong> · <strong>Stripe</strong> · <strong>Vercel</strong> repo in about a second and fails your build on nine things:
-    paywall gates pinned open, unverified webhooks, exposed service-role keys, RLS switched off, committed
-    live keys, email verification disabled, destructive migrations.</p>
+  <p class="stack">A read-only command that scans your repo in about a second and fails the build on
+    <strong>twelve</strong> ways an AI agent quietly breaks production — across
+    <strong>Supabase</strong>, <strong>Firebase</strong>, <strong>Stripe</strong>, <strong>Next.js</strong>,
+    <strong>Vite</strong> and <strong>Vercel</strong>.</p>
 
 
   <section>
@@ -516,10 +517,9 @@
 
 
   <section>
-    <span class="eyebrow">Nine checks</span>
+    <span class="eyebrow">Twelve checks</span>
     <h2>Only things that cost money or leak data</h2>
-    <p>Every one of these is a way an AI agent has actually broken a real app. Rule nine exists because
-      I nearly saved my own npm recovery codes into this repository.</p>
+    <p>Every one of these is a way an AI agent has actually broken a real app. One of them exists because I nearly saved my own npm recovery codes into this repository.</p>
     <table class="checks">
       <thead>
         <tr><th class="sev">Severity</th><th>What it catches</th></tr>
@@ -564,6 +564,21 @@
           <td class="sev"><span class="sev-tag h">High</span></td>
           <td>Accounts go live without proving they own the email
             <code>email-verification-disabled</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>Login tokens are read without checking the signature
+            <code>jwt-not-verified</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>Firebase rules allow anyone to read or write
+            <code>firebase-rules-open</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag h">High</span></td>
+          <td>Any website can call your API with your users' cookies
+            <code>cors-wildcard-credentials</code></td>
         </tr>
         <tr>
           <td class="sev"><span class="sev-tag h">High</span></td>
