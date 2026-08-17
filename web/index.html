@@ -122,6 +122,75 @@
 
   .lede strong { font-weight: 600; }
 
+  .stack {
+    margin: 1.25rem 0 0;
+    font-size: var(--step--1);
+    font-family: var(--mono);
+    line-height: 1.7;
+    color: var(--muted);
+    max-width: 60ch;
+  }
+
+  .stack strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- trust contract ---------- */
+
+  .contract {
+    margin: 1.25rem 0 0;
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--pass);
+    background: var(--surface);
+    padding: 1.1rem 1.25rem;
+  }
+
+  .contract-head {
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin: 0 0 0.75rem;
+    max-width: none;
+  }
+
+  .contract ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.45rem;
+    font-size: 0.95rem;
+  }
+
+  .contract li {
+    padding-left: 1.5rem;
+    position: relative;
+  }
+
+  .contract li::before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: var(--pass);
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+
+  .contract code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+  }
+
+  .contract-links {
+    margin: 0.9rem 0 0;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--mono);
+    font-size: var(--step--1);
+    color: var(--muted);
+    max-width: none;
+  }
+
   /* ---------- install line ---------- */
 
   .install {
@@ -352,8 +421,28 @@
     Your AI agent can write code. It should not be able to <strong>quietly turn off your paywall</strong> and deploy it.
   </p>
 
+  <p class="stack">Eight checks for <strong>Supabase</strong> · <strong>Stripe</strong> · <strong>Vercel</strong> projects —
+    paywall gates pinned open, unverified webhooks, exposed service-role keys, RLS switched off, committed
+    live keys, email verification disabled, destructive migrations.</p>
+
   <div class="install">
     <span class="prompt">$</span><span>npx prodguard check</span><span class="cursor" aria-hidden="true"></span>
+  </div>
+
+  <div class="contract">
+    <p class="contract-head">Before running an unknown CLI on your repo — exactly what this one does:</p>
+    <ul>
+      <li><strong>Reads</strong> source files in the directory you point it at, and nothing outside it.</li>
+      <li><strong>Writes nothing.</strong> The one exception is <code>init</code>, which creates two config files and says so.</li>
+      <li><strong>Zero network requests.</strong> No telemetry, no uploads, no account, no sign-up.</li>
+      <li><strong>Never executes your code.</strong> It matches patterns in text; it does not import or run your app.</li>
+      <li><strong>Zero dependencies</strong> — there is no transitive supply chain to audit.</li>
+    </ul>
+    <p class="contract-links">
+      Read it before you run it — it's about 700 lines:
+      <a href="https://github.com/Felix0731/prodguard">source on GitHub</a> ·
+      <a href="https://www.npmjs.com/package/prodguard">package on npm</a>
+    </p>
   </div>
 
   <section>
@@ -496,12 +585,12 @@ npx prodguard check</div>
       <li><strong>Not a linter.</strong> It ignores style entirely and only looks for changes that cost money or leak data.</li>
       <li><strong>Not a dashboard.</strong> Nothing to sign up for. No data leaves your machine.</li>
       <li><strong>Not a guarantee.</strong> A clean run means these specific checks didn't fire — not that your app is secure.</li>
-      <li><strong>Pattern matching, not full program analysis.</strong> It will miss creative ways of breaking the same things, and it can be wrong. When it's wrong, add an allow entry and move on.</li>
+      <li><strong>Deliberately narrow.</strong> Eight patterns, tuned to stay quiet: it would rather miss a creative way of breaking these things than cry wolf on your build. Treat a finding as a prompt to look, not proof of a vulnerability — and if one is genuinely fine in your codebase, allow-list it by rule and path.</li>
     </ul>
   </section>
 
   <footer>
-    <span>ProdGuard · MIT</span>
+    <span><a href="https://github.com/Felix0731/prodguard">GitHub</a> · <a href="https://www.npmjs.com/package/prodguard">npm</a> · MIT</span>
     <span>Built after an agent shipped a broken paywall</span>
   </footer>
 

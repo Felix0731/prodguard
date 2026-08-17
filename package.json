@@ -4,7 +4,7 @@
   "description": "Stops AI coding agents from disabling your paywall, your auth, and your database security.",
   "license": "MIT",
   "author": "Felix LeBlanc",
-  "homepage": "https://prodguard-topaz.vercel.app",
+  "homepage": "https://prodguard.vercel.app",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Felix0731/prodguard.git"

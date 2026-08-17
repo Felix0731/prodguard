@@ -8,7 +8,7 @@ npx prodguard check
 
 Zero dependencies. Runs in about a second. Works with whatever agent you use — Claude Code, Cursor, Copilot, Codex.
 
-**[prodguard-topaz.vercel.app](https://prodguard-topaz.vercel.app)**
+**[prodguard.vercel.app](https://prodguard.vercel.app)**
 
 ---
 
