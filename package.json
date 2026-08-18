@@ -1,6 +1,6 @@
 {
   "name": "prodguard",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Stops AI coding agents from disabling your paywall, your auth, and your database security.",
   "license": "MIT",
   "author": "Felix LeBlanc",

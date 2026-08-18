@@ -92,6 +92,29 @@ expect(
   bad.some((f) => f.rule === 'stripe-webhook-unverified' && /late-webhook\.mts/.test(f.file)),
 )
 
+// SECURITY DEFINER (r/Supabase, 2026-08-18). The keyword alone is legitimate,
+// so the good/ fixture writes one properly and must stay silent.
+expect(
+  'a definer function granted to anon is critical',
+  bad.some((f) => f.rule === 'security-definer-anon-executable' && f.severity === 'critical' && /get_all_quotes/.test(f.detail)),
+)
+expect(
+  'a definer function with SET search_path does not fire',
+  !good.some((f) => f.rule === 'security-definer-search-path'),
+)
+expect(
+  'a definer function granted only to authenticated is not called anon-executable',
+  !good.some((f) => f.rule === 'security-definer-anon-executable'),
+)
+expect(
+  'a view with security_invoker does not fire',
+  !good.some((f) => f.rule === 'security-definer-view'),
+)
+expect(
+  'a view without security_invoker does fire',
+  bad.some((f) => f.rule === 'security-definer-view' && /quote_totals/.test(f.detail)),
+)
+
 console.log('')
 if (failures) {
   console.log(`  \u001b[31m${failures} failing\u001b[0m\n`)

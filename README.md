@@ -76,6 +76,9 @@ Stuck? [Open an issue](https://github.com/Felix0731/prodguard/issues) and say wh
 | `firebase-rules-open` | 🔴 critical | Firebase rules allow anyone to read or write |
 | `cors-wildcard-credentials` | 🟠 high | Any website can call your API with your users' cookies |
 | `destructive-migration` | 🟠 high | A migration drops or truncates a table |
+| `security-definer-anon-executable` | 🔴 critical | A `SECURITY DEFINER` function is granted to `anon`, so anyone can run it as the owner |
+| `security-definer-view` | 🟠 high | A view in `public` has no `security_invoker`, so it reads past RLS |
+| `security-definer-search-path` | 🟡 medium | A `SECURITY DEFINER` function has no fixed `SET search_path` |
 
 Reports are written for humans, not scanners:
 

@@ -581,6 +581,156 @@ rule({
   },
 })
 
+/* ------------------------------------------------------------------ *
+ * 13-15. SECURITY DEFINER — the other way RLS gets bypassed
+ *
+ * Raised by a reader on r/Supabase minutes after release: an agent that
+ * cannot work out a policy often does not disable RLS at all. It writes a
+ * SECURITY DEFINER function that runs as the owner and steps around it.
+ *
+ * These mirror Supabase's own linter (0010, 0011, 0028/0029) rather than
+ * inventing a standard. SECURITY DEFINER on its own is legitimate and their
+ * docs recommend it for escaping policy recursion, so flagging the keyword
+ * would be noise. Only the dangerous combinations fire.
+ * ------------------------------------------------------------------ */
+
+const NEXT_STATEMENT = /\bCREATE\s+(?:OR\s+REPLACE\s+)?(?:MATERIALIZED\s+)?(?:FUNCTION|VIEW|TABLE|POLICY|TRIGGER|INDEX)\b/i
+
+// One CREATE block: from `start` to the next CREATE, capped at 4000 chars.
+// Sliced by index rather than matched with a regex that spans dollar-quoted
+// bodies — that shape is what produced the 159-second CI hang.
+function blockAt(text, start) {
+  const from = start + 6
+  const rel = text.slice(from).search(NEXT_STATEMENT)
+  const end = rel === -1 ? text.length : from + rel
+  return text.slice(start, Math.min(end, start + 4000))
+}
+
+function normalizeFn(raw) {
+  return String(raw).replace(/["`]/g, '').replace(/^public\./, '').toLowerCase()
+}
+
+const FUNCTION_HEAD = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([A-Za-z0-9_."]+)/gi
+const VIEW_HEAD = /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+([A-Za-z0-9_."]+)/gi
+const IS_DEFINER = /\bSECURITY\s+DEFINER\b/i
+
+// Comments are blanked, not removed, so indexes still line up with the raw
+// file. A commented-out `SET search_path` must not silence the finding, and a
+// commented-out `SECURITY DEFINER` must not create one.
+function sqlFiles(files) {
+  return files
+    .filter((f) => /\.sql$/.test(f.rel))
+    .map((f) => ({ file: f, sql: stripComments(f.text, true) }))
+}
+
+// Roles explicitly granted EXECUTE, gathered across every migration — the
+// GRANT is routinely in a different file from the CREATE.
+function executeGrants(pairs) {
+  const map = new Map()
+  const GRANT = /GRANT\s+(?:ALL|EXECUTE)[^;]{0,80}?\bON\s+FUNCTION\s+([A-Za-z0-9_."]+)[^;]{0,200}?\bTO\s+([^;]{1,120})/gi
+  for (const { sql } of pairs) {
+    for (const m of sql.matchAll(GRANT)) {
+      const fn = normalizeFn(m[1])
+      if (!map.has(fn)) map.set(fn, new Set())
+      for (const role of m[2].toLowerCase().split(/[\s,]+/)) {
+        const clean = role.replace(/["`;()]/g, '')
+        if (clean) map.get(fn).add(clean)
+      }
+    }
+  }
+  return map
+}
+
+rule({
+  id: 'security-definer-anon-executable',
+  severity: 'critical',
+  title: 'SECURITY DEFINER function is callable by anonymous users',
+  plain:
+    'This function runs with its owner\'s privileges, so Row Level Security does not apply to anything it touches. ' +
+    'EXECUTE is granted to a role reachable without logging in, which makes it a public door into those tables.',
+  run(files) {
+    const pairs = sqlFiles(files)
+    if (!pairs.length) return []
+    const grants = executeGrants(pairs)
+    const found = []
+    for (const { file, sql } of pairs) {
+      for (const hit of matches(file, FUNCTION_HEAD)) {
+        if (inComment(file, hit.match.index)) continue
+        if (!IS_DEFINER.test(blockAt(sql, hit.match.index))) continue
+        const roles = grants.get(normalizeFn(hit.match[1]))
+        if (!roles) continue
+        const open = [...roles].filter((r) => r === 'anon' || r === 'public')
+        if (!open.length) continue
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`${hit.match[1]}\` is SECURITY DEFINER and EXECUTE is granted to \`${open.join('`, `')}\`.`,
+        })
+      }
+    }
+    return found
+  },
+})
+
+rule({
+  id: 'security-definer-search-path',
+  severity: 'medium',
+  title: 'SECURITY DEFINER function has no fixed search_path',
+  plain:
+    'Without `SET search_path`, this function resolves table and function names using the caller\'s search path. ' +
+    'Anyone able to create objects in a schema on that path can have their version run with the owner\'s privileges. ' +
+    'Supabase reports this as function_search_path_mutable.',
+  run(files) {
+    const found = []
+    for (const { file, sql } of sqlFiles(files)) {
+      for (const hit of matches(file, FUNCTION_HEAD)) {
+        if (inComment(file, hit.match.index)) continue
+        const body = blockAt(sql, hit.match.index)
+        if (!IS_DEFINER.test(body)) continue
+        if (/\bSET\s+search_path\b/i.test(body)) continue
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`${hit.match[1]}\` is SECURITY DEFINER with no \`SET search_path\`.`,
+        })
+      }
+    }
+    return found
+  },
+})
+
+rule({
+  id: 'security-definer-view',
+  severity: 'high',
+  title: 'View in public ignores Row Level Security',
+  plain:
+    'A view reads its underlying tables as whoever created it unless `security_invoker` is set, so RLS on those ' +
+    'tables does not apply to whoever selects from the view. Supabase reports this as security_definer_view. ' +
+    'The fix is `WITH (security_invoker = on)`.',
+  run(files) {
+    const found = []
+    for (const { file, sql } of sqlFiles(files)) {
+      for (const hit of matches(file, VIEW_HEAD)) {
+        if (inComment(file, hit.match.index)) continue
+        const name = String(hit.match[1]).replace(/["`]/g, '')
+        // PostgREST only exposes `public`; a view in a private schema is not
+        // reachable over the API.
+        if (name.includes('.') && !/^public\./i.test(name)) continue
+        if (/security_invoker\s*=\s*(true|on|1)/i.test(blockAt(sql, hit.match.index))) continue
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`${name}\` has no \`security_invoker\`, so it queries as its owner and bypasses RLS.`,
+        })
+      }
+    }
+    return found
+  },
+})
+
 export function runRules(files) {
   const results = []
   // One line can match a pattern several times (alternations, repeated terms).

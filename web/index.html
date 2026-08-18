@@ -420,6 +420,7 @@
 
   .sev-tag.c { color: var(--accent); }
   .sev-tag.h { color: var(--amber); }
+  .sev-tag.m { color: var(--amber); opacity: .75; }
 
   .checks code {
     font-family: var(--mono);
@@ -506,7 +507,7 @@
   </p>
 
   <p class="stack">A read-only command that scans your repo in about a second and fails the build on
-    <strong>twelve</strong> ways an AI agent quietly breaks production — across
+    <strong>fifteen</strong> ways an AI agent quietly breaks production — across
     <strong>Supabase</strong>, <strong>Firebase</strong> and <strong>Stripe</strong>.</p>
 
 
@@ -565,7 +566,7 @@
   </div>
 
   <p class="tryit">Not ready to point it at your own code?
-    <code>npx prodguard check --demo</code> runs all twelve against a deliberately broken example app.</p>
+    <code>npx prodguard check --demo</code> runs all fifteen against a deliberately broken example app.</p>
 
   <section>
     <span class="eyebrow">Getting started</span>
@@ -603,7 +604,7 @@
         Every finding names the file and the line number, like
         <code>src/pages/Dashboard.jsx:20</code>. Open that file, go to that line, and decide for yourself
         whether it's a real problem. A finding is a prompt to look, not a verdict.
-        <span class="muted-note">Nothing dangerous found? That means these twelve checks didn't
+        <span class="muted-note">Nothing dangerous found? That means these fifteen checks didn't
         fire — not that your app is perfect.</span>
       </li>
 
@@ -622,7 +623,7 @@
   </section>
 
   <section>
-    <span class="eyebrow">Twelve checks</span>
+    <span class="eyebrow">Fifteen checks</span>
     <h2>Only things that cost money or leak data</h2>
     <p>Every one of these is a way an AI agent has actually broken a real app. One of them exists because I nearly saved my own npm recovery codes into this repository.</p>
     <table class="checks">
@@ -690,6 +691,21 @@
           <td>A migration drops or empties a table
             <code>destructive-migration</code></td>
         </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag c">Critical</span></td>
+          <td>A <code>SECURITY DEFINER</code> function is callable by anonymous users, so it runs past RLS
+            <code>security-definer-anon-executable</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag h">High</span></td>
+          <td>A view in <code>public</code> has no <code>security_invoker</code>, so it reads past RLS
+            <code>security-definer-view</code></td>
+        </tr>
+        <tr>
+          <td class="sev"><span class="sev-tag m">Medium</span></td>
+          <td>A <code>SECURITY DEFINER</code> function has no fixed <code>search_path</code>
+            <code>security-definer-search-path</code></td>
+        </tr>
       </tbody>
     </table>
   </section>
@@ -735,7 +751,7 @@ npx prodguard check</pre>
         than silence it: <a href="/did-an-ai-agent-break-my-app">how to tell whether an agent broke
         something</a>, <a href="/check-supabase-rls">how to check RLS on every Supabase table</a>, and
         <a href="/verify-stripe-webhook">how to confirm your Stripe webhook verifies signatures</a>.</li>
-      <li><strong>Deliberately narrow.</strong> Twelve patterns, tuned to stay quiet so that a green build means something. It reads text, it does not parse your program, so an unusual way of writing the same bug can still walk past it. Findings are a prompt to look, not proof of a vulnerability. Treat a finding as a prompt to look, not proof of a vulnerability — and if one is genuinely fine in your codebase, allow-list it by rule and path.</li>
+      <li><strong>Deliberately narrow.</strong> Fifteen patterns, tuned to stay quiet so that a green build means something. It reads text, it does not parse your program, so an unusual way of writing the same bug can still walk past it. Findings are a prompt to look, not proof of a vulnerability. Treat a finding as a prompt to look, not proof of a vulnerability — and if one is genuinely fine in your codebase, allow-list it by rule and path.</li>
     </ul>
   </section>
 
