@@ -115,6 +115,37 @@ expect(
   bad.some((f) => f.rule === 'security-definer-view' && /quote_totals/.test(f.detail)),
 )
 
+// Grants and duplicate policies (r/Supabase, 2026-08-20). RLS is never touched
+// in any of these — that is the whole point of them.
+expect(
+  'a write grant to anon is critical',
+  bad.some((f) => f.rule === 'anon-write-grant' && f.severity === 'critical' && /quotes/.test(f.detail)),
+)
+expect(
+  'GRANT SELECT to anon is not treated as a write grant',
+  !good.some((f) => f.rule === 'anon-write-grant'),
+)
+expect(
+  'GRANT ALL to authenticated fires',
+  bad.some((f) => f.rule === 'grant-all-on-table' && /invoices/.test(f.detail)),
+)
+expect(
+  'a narrow grant to authenticated does not fire',
+  !good.some((f) => f.rule === 'grant-all-on-table'),
+)
+expect(
+  'the anon write grant is not reported twice by the GRANT ALL rule',
+  !bad.some((f) => f.rule === 'grant-all-on-table' && /quotes/.test(f.detail)),
+)
+expect(
+  'a USING (true) policy beside a real one is flagged',
+  bad.some((f) => f.rule === 'duplicate-permissive-policy' && /temp debug read/.test(f.detail)),
+)
+expect(
+  'two real policies on one table do not fire',
+  !good.some((f) => f.rule === 'duplicate-permissive-policy'),
+)
+
 console.log('')
 if (failures) {
   console.log(`  \u001b[31m${failures} failing\u001b[0m\n`)

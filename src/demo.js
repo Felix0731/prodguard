@@ -42,6 +42,10 @@ const FILES = [
     text: `CREATE FUNCTION public.get_all_quotes()\nRETURNS SETOF public.quotes\nLANGUAGE sql\nSECURITY DEFINER\nAS $$ SELECT * FROM public.quotes $$;\n\nGRANT EXECUTE ON FUNCTION public.get_all_quotes() TO anon;\n\nCREATE VIEW public.quote_totals AS\n  SELECT owner, count(*) AS total FROM public.quotes GROUP BY owner;\n`,
   },
   {
+    rel: 'supabase/migrations/003_grants.sql',
+    text: `GRANT INSERT, UPDATE ON TABLE public.quotes TO anon;\nGRANT ALL ON TABLE public.invoices TO authenticated;\n\nCREATE POLICY "quotes are owned" ON public.quotes\n  FOR SELECT USING (auth.uid() = owner);\n\nCREATE POLICY "temp debug read" ON public.quotes\n  FOR SELECT USING (true);\n`,
+  },
+  {
     rel: 'recovery_codes.txt',
     text: `a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90\nf0e1d2c3b4a59687f0e1d2c3b4a59687f0e1d2c3b4a59687f0e1d2c3b4a59687\n`,
   },

@@ -731,6 +731,176 @@ rule({
   },
 })
 
+/* ------------------------------------------------------------------ *
+ * 16-18. Grants and duplicate policies — RLS defeated without touching RLS
+ *
+ * Both reported by readers on r/Supabase. An agent that hits "permission
+ * denied" often does not disable RLS at all: it widens a GRANT, or bolts a
+ * second permissive policy alongside the existing one. Postgres ORs
+ * permissive policies, so a `USING (true)` wins silently and both policies
+ * read perfectly fine on their own.
+ * ------------------------------------------------------------------ */
+
+// Reads a balanced parenthesised expression starting at `open`, so a nested
+// predicate like `USING ((select auth.uid()) = owner)` is read whole. Counting
+// characters beats a regex here: the pattern that would match nested parens is
+// the same shape that hung CI for 159 seconds.
+function readParen(text, open) {
+  if (text[open] !== '(') return ''
+  let depth = 0
+  for (let i = open; i < text.length && i < open + 4000; i++) {
+    if (text[i] === '(') depth++
+    else if (text[i] === ')') {
+      depth--
+      if (depth === 0) return text.slice(open + 1, i)
+    }
+  }
+  return ''
+}
+
+// `(true)`, `( TRUE )`, `((true))` — all the same unconditional pass.
+function isAlwaysTrue(expr) {
+  let e = String(expr).trim()
+  while (e.startsWith('(') && e.endsWith(')')) e = e.slice(1, -1).trim()
+  return /^true$/i.test(e)
+}
+
+const OPEN_ROLES = new Set(['anon', 'public'])
+const WRITE_PRIVS = /\b(ALL|INSERT|UPDATE|DELETE|TRUNCATE)\b/i
+
+// GRANT <privs> ON [TABLE] <name> TO <roles>. Bounded so it cannot run away.
+const GRANT_RE = /GRANT\s+([A-Za-z, ]{2,80}?)\s+ON\s+(?:TABLE\s+)?([A-Za-z0-9_."]+)\s+TO\s+([^;]{1,120})/gi
+
+function grantRoles(raw) {
+  return String(raw)
+    .toLowerCase()
+    .split(/[\s,]+/)
+    .map((r) => r.replace(/["`;]/g, ''))
+    .filter(Boolean)
+}
+
+rule({
+  id: 'anon-write-grant',
+  severity: 'critical',
+  title: 'Write access granted to unauthenticated users',
+  plain:
+    'This grants insert, update or delete on a table to a role anyone can reach without logging in. ' +
+    'Row Level Security still applies, but any gap in a policy is now writable by the public internet, ' +
+    'and a grant is the quiet way an agent answers "permission denied" without touching RLS at all.',
+  run(files) {
+    const found = []
+    for (const { file, sql } of sqlFiles(files)) {
+      for (const hit of matches(file, GRANT_RE)) {
+        if (inComment(file, hit.match.index)) continue
+        if (!WRITE_PRIVS.test(hit.match[1])) continue
+        const open = grantRoles(hit.match[3]).filter((r) => OPEN_ROLES.has(r))
+        if (!open.length) continue
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`${hit.match[1].trim().toUpperCase()}\` on \`${hit.match[2]}\` granted to \`${open.join('`, `')}\`.`,
+        })
+      }
+      void sql
+    }
+    return found
+  },
+})
+
+rule({
+  id: 'grant-all-on-table',
+  severity: 'high',
+  title: 'GRANT ALL replaces whatever column-level access you had',
+  plain:
+    'GRANT ALL hands over every privilege on the table, including TRUNCATE, and supersedes any ' +
+    'column-level grants that were limiting access before. Nothing is disabled and no policy changes, ' +
+    'so every other check here still passes — the access just got wider in one line.',
+  run(files) {
+    const found = []
+    for (const { file, sql } of sqlFiles(files)) {
+      for (const hit of matches(file, GRANT_RE)) {
+        if (inComment(file, hit.match.index)) continue
+        if (!/^\s*ALL\b/i.test(hit.match[1])) continue
+        const roles = grantRoles(hit.match[3])
+        // anon/public is the critical rule's job; don't report it twice.
+        if (roles.some((r) => OPEN_ROLES.has(r))) continue
+        if (!roles.includes('authenticated')) continue
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`GRANT ALL\` on \`${hit.match[2]}\` to \`authenticated\`. Grant only the privileges the app uses.`,
+        })
+      }
+      void sql
+    }
+    return found
+  },
+})
+
+const POLICY_HEAD = /CREATE\s+POLICY\s+(?:"([^"]{1,80})"|([A-Za-z0-9_]{1,80}))\s+ON\s+([A-Za-z0-9_."]+)/gi
+
+rule({
+  id: 'duplicate-permissive-policy',
+  severity: 'critical',
+  title: 'A second permissive policy overrides the one next to it',
+  plain:
+    'Postgres combines permissive policies with OR, so when several cover the same command the most ' +
+    'open one decides. A `USING (true)` sitting beside a real policy silently grants everything, and ' +
+    'both policies read perfectly fine on their own.',
+  run(files) {
+    const pairs = sqlFiles(files)
+    if (!pairs.length) return []
+
+    // Collect every policy across all migrations first — the permissive one is
+    // routinely added in a later file than the policy it overrides.
+    const policies = []
+    for (const { file, sql } of pairs) {
+      for (const hit of matches(file, POLICY_HEAD)) {
+        if (inComment(file, hit.match.index)) continue
+        const body = blockAt(sql, hit.match.index)
+        if (/\bAS\s+RESTRICTIVE\b/i.test(body)) continue // restrictive policies AND, they cannot widen
+        const cmd = (body.match(/\bFOR\s+(ALL|SELECT|INSERT|UPDATE|DELETE)\b/i) || [, 'ALL'])[1].toUpperCase()
+        const usingAt = body.search(/\bUSING\s*\(/i)
+        const checkAt = body.search(/\bWITH\s+CHECK\s*\(/i)
+        const usingExpr = usingAt === -1 ? '' : readParen(body, body.indexOf('(', usingAt))
+        const checkExpr = checkAt === -1 ? '' : readParen(body, body.indexOf('(', checkAt))
+        policies.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          name: hit.match[1] || hit.match[2],
+          table: normalizeTable(hit.match[3]),
+          cmd,
+          open: isAlwaysTrue(usingExpr) || isAlwaysTrue(checkExpr),
+        })
+      }
+    }
+
+    const overlaps = (a, b) => a === b || a === 'ALL' || b === 'ALL'
+    const found = []
+    for (const p of policies) {
+      if (!p.open) continue
+      // A lone `USING (true)` policy may well be a deliberately public table.
+      // It is only a silent override when something else already covers the
+      // same command and is being widened by this one.
+      const others = policies.filter((q) => q !== p && q.table === p.table && overlaps(q.cmd, p.cmd))
+      if (!others.length) continue
+      found.push({
+        file: p.file,
+        line: p.line,
+        snippet: p.snippet,
+        detail:
+          `\`${p.name}\` on \`${p.table}\` is permissive and always true, alongside ` +
+          `${others.length} other polic${others.length === 1 ? 'y' : 'ies'} for ${p.cmd}. ` +
+          `Permissive policies are OR'd, so this one decides.`,
+      })
+    }
+    return found
+  },
+})
+
 export function runRules(files) {
   const results = []
   // One line can match a pattern several times (alternations, repeated terms).
