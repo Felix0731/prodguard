@@ -11,3 +11,4 @@ test/fixtures/bad/src/pages/keys.js
 
 # Local launch drafts, not part of the package
 REDDIT_*.txt
+CLAUDEAI_*.txt

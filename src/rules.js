@@ -901,6 +901,158 @@ rule({
   },
 })
 
+/* ------------------------------------------------------------------ *
+ * 19-20. Two more from the same r/Supabase thread
+ * ------------------------------------------------------------------ */
+
+rule({
+  id: 'policy-missing-to-clause',
+  severity: 'high',
+  title: 'Policy has no TO clause, so it also answers anonymous requests',
+  plain:
+    'A CREATE POLICY with no TO clause defaults to PUBLIC, which includes anon, and this ' +
+    'predicate does not depend on who is calling — so it matches rows for an unauthenticated ' +
+    'request too. Nothing is disabled and the policy reads correctly; the role it covers is just ' +
+    'wider than whoever wrote it assumed. Add `TO authenticated`.',
+  run(files) {
+    const found = []
+    for (const { file, sql } of sqlFiles(files)) {
+      for (const hit of matches(file, POLICY_HEAD)) {
+        if (inComment(file, hit.match.index)) continue
+        const body = blockAt(sql, hit.match.index)
+        if (/\bTO\s+[A-Za-z0-9_"]/i.test(body)) continue
+        // A restrictive policy only ever narrows access, so a missing TO on one
+        // cannot widen anything.
+        if (/\bAS\s+RESTRICTIVE\b/i.test(body)) continue
+        // The predicate decides whether this actually matters. `auth.uid() = owner`
+        // evaluates to NULL for an anonymous caller, so the policy matches no rows
+        // and the missing TO leaks nothing — flagging those would fire on almost
+        // every Supabase project and get the tool uninstalled. Only an
+        // identity-independent predicate (`is_public`, `true`, a plain column
+        // comparison) actually hands rows to anon.
+        if (/\b(auth\s*\.\s*(uid|jwt|role)|current_setting|current_user|session_user)\b/i.test(body)) continue
+        const name = hit.match[1] || hit.match[2]
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`${name}\` on \`${normalizeTable(hit.match[3])}\` has no \`TO\` clause, so it defaults to PUBLIC (which includes \`anon\`).`,
+        })
+      }
+    }
+    return found
+  },
+})
+
+// Columns introduced by CREATE TABLE and ALTER TABLE ... ADD COLUMN, per table.
+// Deliberately additive: a column this misses only costs a finding we don't
+// raise, whereas one we invent costs a false positive.
+function declaredColumns(pairs) {
+  const byTable = new Map()
+  const add = (table, col) => {
+    const t = normalizeTable(table)
+    if (!byTable.has(t)) byTable.set(t, new Set())
+    byTable.get(t).add(String(col).replace(/["`]/g, '').toLowerCase())
+  }
+  for (const { sql } of pairs) {
+    for (const m of sql.matchAll(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z0-9_."]+)\s*\(/gi)) {
+      const inner = readParen(sql, sql.indexOf('(', m.index + m[0].length - 1))
+      // Split on top-level commas only, so `numeric(10, 2)` stays one column.
+      let depth = 0, cur = ''
+      const parts = []
+      for (const ch of inner) {
+        if (ch === '(') depth++
+        else if (ch === ')') depth--
+        if (ch === ',' && depth === 0) { parts.push(cur); cur = '' } else cur += ch
+      }
+      parts.push(cur)
+      for (const part of parts) {
+        const name = part.trim().split(/\s+/)[0]
+        if (!name) continue
+        // Skip table-level constraints, which are not columns.
+        if (/^(primary|foreign|unique|check|constraint|exclude|like)$/i.test(name)) continue
+        add(m[1], name)
+      }
+    }
+    for (const m of sql.matchAll(/ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?([A-Za-z0-9_."]+)[\s\S]{0,60}?ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z0-9_"]+)/gi)) {
+      add(m[1], m[2])
+    }
+  }
+  return byTable
+}
+
+// Identifiers a policy predicate references. Function names, keywords and
+// qualified references are excluded — only bare identifiers that could plausibly
+// be a column of the policy's own table.
+const SQL_WORDS = new Set([
+  'and','or','not','in','is','null','true','false','select','from','where','exists','case','when',
+  'then','else','end','like','ilike','any','all','between','as','on','using','with','check','cast',
+  'current_setting','auth','uid','jwt','role','coalesce','array','text','uuid','int','boolean','left',
+  'join','inner','outer','distinct','count','sum','min','max','now','current_user','session_user',
+])
+function referencedIdentifiers(expr) {
+  const out = new Set()
+  const cleaned = String(expr).replace(/'[^']*'/g, ' ')
+  for (const m of cleaned.matchAll(/([A-Za-z_][A-Za-z0-9_]*)\s*(\(|\.)?/g)) {
+    const word = m[1].toLowerCase()
+    if (m[2]) continue           // a function call or a qualified prefix, not a bare column
+    if (SQL_WORDS.has(word)) continue
+    out.add(word)
+  }
+  return out
+}
+
+rule({
+  id: 'policy-references-missing-column',
+  severity: 'medium',
+  title: 'Policy references a column that does not exist',
+  plain:
+    'This policy predicate names a column that no migration ever creates on that table. ' +
+    'Usually the wake of a rename that nobody re-checked RLS against, which means the policy is ' +
+    'not filtering on what its author thought. It cannot catch a rename to another valid column — ' +
+    'only two authenticated sessions reading the same table settles that.',
+  run(files) {
+    const pairs = sqlFiles(files)
+    if (!pairs.length) return []
+    const columns = declaredColumns(pairs)
+    if (!columns.size) return []
+
+    const found = []
+    for (const { file, sql } of pairs) {
+      for (const hit of matches(file, POLICY_HEAD)) {
+        if (inComment(file, hit.match.index)) continue
+        const table = normalizeTable(hit.match[3])
+        const known = columns.get(table)
+        // Only judge tables this repo actually defines. A policy on a table
+        // created elsewhere would otherwise report every column as missing.
+        if (!known || !known.size) continue
+        const body = blockAt(sql, hit.match.index)
+        const preds = []
+        const u = body.search(/\bUSING\s*\(/i)
+        const c = body.search(/\bWITH\s+CHECK\s*\(/i)
+        if (u !== -1) preds.push(readParen(body, body.indexOf('(', u)))
+        if (c !== -1) preds.push(readParen(body, body.indexOf('(', c)))
+        // A subquery pulls in other tables' columns, which this cannot resolve.
+        if (preds.some((e) => /\bSELECT\b/i.test(e))) continue
+
+        const missing = []
+        for (const ident of referencedIdentifiers(preds.join(' '))) {
+          if (!known.has(ident)) missing.push(ident)
+        }
+        if (!missing.length) continue
+        const name = hit.match[1] || hit.match[2]
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`${name}\` references \`${missing.join('`, `')}\` on \`${table}\`, which no migration creates. Verify the policy still filters on what you intend.`,
+        })
+      }
+    }
+    return found
+  },
+})
+
 export function runRules(files) {
   const results = []
   // One line can match a pattern several times (alternations, repeated terms).

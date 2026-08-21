@@ -10,3 +10,15 @@ CREATE POLICY "quotes are owned" ON public.quotes
 
 CREATE POLICY "temp debug read" ON public.quotes
   FOR SELECT USING (true);
+
+-- No TO clause, and the predicate doesn't depend on who's calling. Postgres
+-- defaults the policy to PUBLIC, which includes anon, so this hands rows to
+-- unauthenticated requests.
+CREATE POLICY "published invoices" ON public.invoices
+  FOR SELECT USING (published = true);
+
+-- Correct in every way except the column: owner_id was renamed and nobody
+-- re-checked RLS against it.
+CREATE POLICY "own invoices" ON public.invoices
+  TO authenticated
+  FOR SELECT USING (auth.uid() = owner_id);

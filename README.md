@@ -82,6 +82,8 @@ Stuck? [Open an issue](https://github.com/Felix0731/prodguard/issues) and say wh
 | `anon-write-grant` | 🔴 critical | Insert/update/delete granted to `anon` or `PUBLIC` on a table |
 | `duplicate-permissive-policy` | 🔴 critical | A `USING (true)` policy sits beside a real one — permissive policies are OR'd |
 | `grant-all-on-table` | 🟠 high | `GRANT ALL` supersedes column-level grants and includes TRUNCATE |
+| `policy-missing-to-clause` | 🟠 high | No `TO` clause plus an identity-independent predicate, so `anon` gets rows |
+| `policy-references-missing-column` | 🟡 medium | A policy predicate names a column no migration creates |
 
 Reports are written for humans, not scanners:
 

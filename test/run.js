@@ -146,6 +146,32 @@ expect(
   !good.some((f) => f.rule === 'duplicate-permissive-policy'),
 )
 
+// Guidondor's third report and jaimittal91's cheap tripwire (r/Supabase, 2026-08-21).
+expect(
+  'a policy with no TO clause is flagged',
+  bad.some((f) => f.rule === 'policy-missing-to-clause' && /published invoices/.test(f.detail)),
+)
+expect(
+  'TO authenticated silences it',
+  !good.some((f) => f.rule === 'policy-missing-to-clause'),
+)
+expect(
+  'a missing TO on an auth.uid() predicate does NOT fire (anon matches no rows)',
+  !bad.some((f) => f.rule === 'policy-missing-to-clause' && /own invoices/.test(f.detail)),
+)
+expect(
+  'a policy referencing a column no migration creates is flagged',
+  bad.some((f) => f.rule === 'policy-references-missing-column' && /owner_id/.test(f.detail)),
+)
+expect(
+  'a policy referencing a real column does not fire',
+  !good.some((f) => f.rule === 'policy-references-missing-column'),
+)
+expect(
+  'a policy on a table this repo never defines is skipped, not reported as all-missing',
+  !bad.concat(good).some((f) => f.rule === 'policy-references-missing-column' && /price_list/.test(f.detail)),
+)
+
 console.log('')
 if (failures) {
   console.log(`  \u001b[31m${failures} failing\u001b[0m\n`)
