@@ -771,6 +771,13 @@ const WRITE_PRIVS = /\b(ALL|INSERT|UPDATE|DELETE|TRUNCATE)\b/i
 // GRANT <privs> ON [TABLE] <name> TO <roles>. Bounded so it cannot run away.
 const GRANT_RE = /GRANT\s+([A-Za-z, ]{2,80}?)\s+ON\s+(?:TABLE\s+)?([A-Za-z0-9_."]+)\s+TO\s+([^;]{1,120})/gi
 
+// `GRANT ... ON ALL TABLES IN SCHEMA public TO anon` is the same act at schema
+// scope, and the per-table pattern above cannot see it: there is no table name
+// between ON and TO. Reported by a reader who audits Supabase projects, as the
+// migration an agent writes to "fix" a permissions error, silently undoing every
+// earlier hardening migration in one line.
+const GRANT_SCHEMA_RE = /GRANT\s+([A-Za-z, ]{2,80}?)\s+ON\s+ALL\s+(TABLES|SEQUENCES|FUNCTIONS|ROUTINES)\s+IN\s+SCHEMA\s+([A-Za-z0-9_.", ]{1,80}?)\s+TO\s+([^;]{1,120})/gi
+
 function grantRoles(raw) {
   return String(raw)
     .toLowerCase()
@@ -904,6 +911,78 @@ rule({
 /* ------------------------------------------------------------------ *
  * 19-20. Two more from the same r/Supabase thread
  * ------------------------------------------------------------------ */
+
+rule({
+  id: 'grant-schema-wide',
+  severity: 'critical',
+  title: 'Every table in the schema granted at once',
+  plain:
+    'This grants on ALL objects in a schema in a single statement, so it covers tables the author ' +
+    'never looked at and silently supersedes any narrower grants earlier migrations set up. ' +
+    'When the target role is reachable without logging in, every table in the schema is exposed ' +
+    'and only Row Level Security is left standing between the public internet and the data.',
+  run(files) {
+    const found = []
+    for (const { file } of sqlFiles(files)) {
+      for (const hit of matches(file, GRANT_SCHEMA_RE)) {
+        if (inComment(file, hit.match.index)) continue
+        const privs = hit.match[1].trim().toUpperCase()
+        if (!WRITE_PRIVS.test(privs) && !/\bSELECT\b/i.test(privs)) continue
+        const roles = grantRoles(hit.match[4])
+        const open = roles.filter((r) => OPEN_ROLES.has(r) || r === 'authenticated')
+        if (!open.length) continue
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail:
+            `\`${privs}\` on ALL ${hit.match[2].toUpperCase()} in schema \`${hit.match[3].trim()}\` ` +
+            `granted to \`${open.join('`, `')}\`. Grant per table, per privilege.`,
+        })
+      }
+    }
+    return found
+  },
+})
+
+rule({
+  id: 'policy-write-check-open',
+  severity: 'critical',
+  title: 'Policy reads carefully but lets anything be written',
+  plain:
+    'The USING expression scopes which rows the caller can see, but WITH CHECK is unconditional, ' +
+    'so the caller can write a row that does not satisfy it — moving a record to another owner, ' +
+    'or inserting one under someone else\'s id. The read side looks correct in review, which is ' +
+    'exactly why this survives one. Omitting WITH CHECK entirely is safe (Postgres falls back to ' +
+    'USING); writing it as `true` is not.',
+  run(files) {
+    const found = []
+    for (const { file, sql } of sqlFiles(files)) {
+      for (const hit of matches(file, POLICY_HEAD)) {
+        if (inComment(file, hit.match.index)) continue
+        const body = blockAt(sql, hit.match.index)
+        if (/\bAS\s+RESTRICTIVE\b/i.test(body)) continue
+        const checkAt = body.search(/\bWITH\s+CHECK\s*\(/i)
+        if (checkAt === -1) continue // omitted is safe: USING is reused
+        if (!isAlwaysTrue(readParen(body, body.indexOf('(', checkAt)))) continue
+        // A policy that is open on BOTH sides is a deliberately public table, and
+        // duplicate-permissive-policy already speaks to the read side. The bug
+        // here is specifically a careful read paired with an open write.
+        const usingAt = body.search(/\bUSING\s*\(/i)
+        if (usingAt === -1) continue
+        if (isAlwaysTrue(readParen(body, body.indexOf('(', usingAt)))) continue
+        const name = hit.match[1] || hit.match[2]
+        found.push({
+          file: file.rel,
+          line: hit.line,
+          snippet: hit.snippet,
+          detail: `\`${name}\` on \`${normalizeTable(hit.match[3])}\` scopes reads but its \`WITH CHECK\` is \`true\`, so writes are unrestricted.`,
+        })
+      }
+    }
+    return found
+  },
+})
 
 rule({
   id: 'policy-missing-to-clause',

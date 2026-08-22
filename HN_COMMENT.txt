@@ -1,0 +1,18 @@
+Author here. The pattern I kept running into with agent-written code: you ask it to fix something, it can't work out the real cause, and the shortest path to "working" is removing whatever is in the way. RLS disabled so a query returns rows. A paywall check pinned to false for a demo. Email confirmation off during testing and never back on. Nothing errors, and the diff reads fine.
+
+Twenty checks for that class of change, exit 1 on critical so it blocks CI. Zero dependencies, MIT. `npx prodguard check --demo` runs everything against an in-memory broken app without touching your code.
+
+Before publishing I spent a day trying to break it, which I'd recommend to anyone shipping a security tool, because it went badly:
+
+- It printed the secrets it found. I'd written a redact() and wired it into one rule out of twelve. The other ten printed the whole matching line, so a service_role JWT went to stdout and into CI logs.
+- A 512KB file could hang CI for 159 seconds through catastrophic backtracking. The same broken pattern meant TRUNCATE never matched anything.
+- A typo'd path printed "Nothing dangerous found" and exited 0. For a tool whose only real output is an exit code, that's the worst available failure.
+- 24 false positives, one firing on every Supabase project on earth because the vendor's own stock template trips it.
+
+Then I posted it on r/Supabase and readers found five more things it missed, none of which I had any coverage for. Over-broad GRANTs. A second permissive policy added beside the existing one, which Postgres ORs so the open one silently wins. SECURITY DEFINER functions. All shipped within a day of being reported.
+
+The most useful correction was one I nearly got wrong yesterday. Someone reported that a CREATE POLICY with no TO clause defaults to PUBLIC, which includes anon. Obvious rule: flag every policy with no TO clause. I built that, ran it against a real project, and got 15 findings out of 15 policies, because 14 gate on auth.uid(), which is NULL for an anonymous caller, so the policy matches no rows and the missing TO leaks nothing. That is a tool nobody keeps installed. It now only fires when the predicate ignores the caller, which is when anon actually gets rows. Same project went to one finding, and that one is real.
+
+Honest limits: it matches text, it does not parse your program. Write the same bug differently and it misses it. A pass means those twenty checks didn't fire, nothing more. Anything configured in a dashboard rather than your repo is invisible to it, as it is to any repo scanner. Two people made the point that the durable version of this is a Postgres event trigger plus a two-session runtime check, and they're right; this is the cheap CI-speed half.
+
+What I'd most like: other agent-caused failures worth encoding. Every rule added in the last three days came from someone describing a diff.

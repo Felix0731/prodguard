@@ -43,7 +43,7 @@ const FILES = [
   },
   {
     rel: 'supabase/migrations/003_grants.sql',
-    text: `GRANT INSERT, UPDATE ON TABLE public.quotes TO anon;\nGRANT ALL ON TABLE public.invoices TO authenticated;\n\nCREATE POLICY "quotes are owned" ON public.quotes\n  FOR SELECT USING (auth.uid() = owner);\n\nCREATE POLICY "temp debug read" ON public.quotes\n  FOR SELECT USING (true);\n\nCREATE POLICY "published invoices" ON public.invoices\n  FOR SELECT USING (published = true);\n`,
+    text: `GRANT INSERT, UPDATE ON TABLE public.quotes TO anon;\nGRANT ALL ON TABLE public.invoices TO authenticated;\n\nCREATE POLICY "quotes are owned" ON public.quotes\n  FOR SELECT USING (auth.uid() = owner);\n\nCREATE POLICY "temp debug read" ON public.quotes\n  FOR SELECT USING (true);\n\nCREATE POLICY "published invoices" ON public.invoices\n  FOR SELECT USING (published = true);\n\nGRANT ALL ON ALL TABLES IN SCHEMA public TO anon;\n\nCREATE POLICY \"quotes write open\" ON public.quotes\n  TO authenticated\n  FOR UPDATE USING (auth.uid() = owner) WITH CHECK (true);\n`,
   },
   {
     rel: 'recovery_codes.txt',

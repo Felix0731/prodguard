@@ -172,6 +172,24 @@ expect(
   !bad.concat(good).some((f) => f.rule === 'policy-references-missing-column' && /price_list/.test(f.detail)),
 )
 
+// Reported by a Supabase auditor on the supabase/supabase discussion (2026-08-22).
+expect(
+  'a schema-wide grant to anon is critical',
+  bad.some((f) => f.rule === 'grant-schema-wide' && f.severity === 'critical' && /anon/.test(f.detail)),
+)
+expect(
+  'a schema-wide grant to service_role does not fire',
+  !good.some((f) => f.rule === 'grant-schema-wide'),
+)
+expect(
+  'a scoped USING with WITH CHECK (true) is critical',
+  bad.some((f) => f.rule === 'policy-write-check-open' && /quotes write open/.test(f.detail)),
+)
+expect(
+  'OMITTING with check is safe and must not fire (Postgres reuses USING)',
+  !good.some((f) => f.rule === 'policy-write-check-open'),
+)
+
 console.log('')
 if (failures) {
   console.log(`  \u001b[31m${failures} failing\u001b[0m\n`)

@@ -16,3 +16,12 @@ CREATE POLICY "admin reads" ON public.quotes
 CREATE POLICY "public price list" ON public.price_list
   TO anon, authenticated
   FOR SELECT USING (true);
+
+-- Schema-wide, but to a role that is never reachable from a client.
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+
+-- WITH CHECK omitted entirely is SAFE: Postgres reuses the USING expression
+-- for new rows. A rule that flags this would fire on correct code.
+CREATE POLICY "owner writes" ON public.quotes
+  TO authenticated
+  FOR UPDATE USING (auth.uid() = owner);

@@ -84,6 +84,8 @@ Stuck? [Open an issue](https://github.com/Felix0731/prodguard/issues) and say wh
 | `grant-all-on-table` | 🟠 high | `GRANT ALL` supersedes column-level grants and includes TRUNCATE |
 | `policy-missing-to-clause` | 🟠 high | No `TO` clause plus an identity-independent predicate, so `anon` gets rows |
 | `policy-references-missing-column` | 🟡 medium | A policy predicate names a column no migration creates |
+| `grant-schema-wide` | 🔴 critical | `GRANT ... ON ALL TABLES IN SCHEMA` to a client-reachable role |
+| `policy-write-check-open` | 🔴 critical | Scoped `USING` paired with `WITH CHECK (true)`, so writes are unrestricted |
 
 Reports are written for humans, not scanners:
 
