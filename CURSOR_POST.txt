@@ -1,0 +1,36 @@
+The pattern, and I doubt I'm the only one: you ask the agent to fix something, it can't work out the real cause, and the fastest way to make the error go away is to remove whatever's in the way. Row level security disabled so a query returns rows. A paywall check set to false so a demo works. Email confirmation off during testing that never goes back on.
+
+Nothing errors. The diff looks reasonable. It passes review because there's nothing malformed to see, the guard is just gone.
+
+So I wrote a CLI that fails the build on that specific class of change. Free, MIT, no dependencies:
+
+    npx prodguard check --demo
+    npx prodguard check
+
+The demo runs everything against a fake broken app, so you can see what it does without pointing it at your code.
+
+Before publishing I spent a day trying to break it, and it went badly:
+
+It printed the secrets it found. I'd written a redact() and wired it into one rule out of twelve. The other ten printed the whole matching line, so when it found a database key it printed the key, into the terminal and into CI logs.
+
+A typo'd path returned "Nothing dangerous found" and exit 0. So prodguard check ./scr passes. For a tool whose only real output is an exit code, that's the worst failure available.
+
+A red team pass wrote 29 deliberately vulnerable files and got zero findings. Every rule was matching literal strings, so const [locked, setLocked] = useState(false) went straight past, which is how an agent actually writes a gate.
+
+Fixed all that, published, posted it. Readers then found five more things it missed, and every one is the same shape: nothing gets disabled, so nothing looks wrong.
+
+- the agent hits permission denied and widens a GRANT instead of touching the policy
+- a second permissive policy added beside the existing one, which Postgres ORs, so the open one silently wins
+- GRANT ALL ON ALL TABLES IN SCHEMA, which supersedes every earlier hardening migration in one line
+- a policy that scopes reads carefully but leaves the write side unrestricted
+- functions that run as their owner and skip the row rules entirely
+
+All shipped. 22 rules now.
+
+One of those reports I nearly got wrong, and it's the most useful thing I learned. Someone credible told me to flag every policy missing a particular clause. I built it, ran it against a real project, and got 15 findings out of 15 policies, all false. The docs said the missing clause falls back to a safe default. A tool that cries wolf 15 times out of 15 is a tool you uninstall on day one, so the rule now only fires on the case that genuinely breaks. Same project went to one finding, and that one was real.
+
+https://github.com/Felix0731/prodguard
+
+What it doesn't do: it reads text, it doesn't parse your program. Write the same bug a different way and it misses it. It gets things wrong sometimes too, there's an ignore list. A pass means those 22 checks didn't fire, nothing more.
+
+If an agent has removed something in your project that this doesn't catch, tell me what the diff looked like. That's where every rule after the first twelve came from.

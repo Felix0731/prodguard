@@ -1,0 +1,1 @@
+The agent doesn't break your auth, it removes it. I wrote a scanner for that, and readers found five things it missed.
