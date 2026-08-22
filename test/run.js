@@ -160,6 +160,14 @@ expect(
   !bad.some((f) => f.rule === 'policy-missing-to-clause' && /own invoices/.test(f.detail)),
 )
 expect(
+  'a GRANT after a policy does not swallow the missing TO (was a silent pass in 0.9.0)',
+  bad.some((f) => f.rule === 'policy-missing-to-clause' && /public ledger/.test(f.detail)),
+)
+expect(
+  'a table anon had revoked is out of reach, so its missing TO is not reported',
+  !good.some((f) => f.rule === 'policy-missing-to-clause'),
+)
+expect(
   'a policy referencing a column no migration creates is flagged',
   bad.some((f) => f.rule === 'policy-references-missing-column' && /owner_id/.test(f.detail)),
 )

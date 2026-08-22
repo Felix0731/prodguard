@@ -32,3 +32,10 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO anon;
 CREATE POLICY "quotes write open" ON public.quotes
   TO authenticated
   FOR UPDATE USING (auth.uid() = owner) WITH CHECK (true);
+
+-- Same missing-TO bug as above, but with an ordinary grant following it. blockAt
+-- runs to the next CREATE, so that `TO authenticated` used to satisfy the TO test
+-- and silence this finding entirely. It must still fire.
+CREATE POLICY "public ledger" ON public.ledger
+  FOR SELECT USING (visible = true);
+GRANT SELECT ON TABLE public.ledger TO authenticated;

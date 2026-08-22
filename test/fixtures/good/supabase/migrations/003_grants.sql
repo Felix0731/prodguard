@@ -25,3 +25,12 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 CREATE POLICY "owner writes" ON public.quotes
   TO authenticated
   FOR UPDATE USING (auth.uid() = owner);
+
+-- No TO clause and a predicate that ignores the caller, which is the shape the
+-- missing-TO rule fires on — but this project revoked anon's access to the
+-- table, and Postgres checks the table privilege before it evaluates a policy.
+-- The policy is unreachable for anon, so there is nothing to report.
+REVOKE ALL ON TABLE public.audit_log FROM anon;
+
+CREATE POLICY "audit rows are readable" ON public.audit_log
+  FOR SELECT USING (archived = false);

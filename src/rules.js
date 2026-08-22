@@ -606,6 +606,22 @@ function blockAt(text, start) {
   return text.slice(start, Math.min(end, start + 4000))
 }
 
+// A CREATE POLICY is a single statement, but blockAt runs to the next CREATE and
+// so swallows whatever follows it. An ordinary `GRANT ... TO authenticated` sitting
+// after a policy was enough on its own to satisfy the TO test in
+// policy-missing-to-clause and silence a real finding — a pass that should have
+// been a report, which is the failure this scanner treats as worse than a miss.
+// Semicolons inside quoted strings are not terminators.
+function firstStatement(block) {
+  let quoted = false
+  for (let i = 0; i < block.length; i++) {
+    const ch = block[i]
+    if (ch === "'") quoted = !quoted
+    else if (ch === ';' && !quoted) return block.slice(0, i + 1)
+  }
+  return block
+}
+
 function normalizeFn(raw) {
   return String(raw).replace(/["`]/g, '').replace(/^public\./, '').toLowerCase()
 }
@@ -784,6 +800,48 @@ function grantRoles(raw) {
     .split(/[\s,]+/)
     .map((r) => r.replace(/["`;]/g, ''))
     .filter(Boolean)
+}
+
+// Postgres checks the table privilege before it ever evaluates a policy, so a
+// policy is only reachable if the role actually holds the grant. A missing TO on
+// a table where `anon` was never granted SELECT leaks nothing, whatever the
+// predicate says. Reported by the reader whose missing-TO report became the rule
+// below, as the third condition it was missing.
+//
+// The naive reading of that — fire only when a GRANT to anon is visible — would
+// be an inversion rather than a refinement. In Supabase the grant is a platform
+// default that never appears in the repository at all, so requiring positive
+// evidence of it would silence nearly every true finding, which is the failure
+// mode this scanner treats as worse than a miss. The default assumption stays
+// "anon can reach it"; only an explicit REVOKE in the repo, never re-granted,
+// takes a table back out of scope.
+const REVOKE_RE = /REVOKE\s+([A-Za-z, ]{2,80}?)\s+ON\s+(?:TABLE\s+)?([A-Za-z0-9_."]+)\s+FROM\s+([^;]{1,120})/gi
+
+function coversSelect(raw) {
+  return /\b(ALL|SELECT)\b/i.test(String(raw))
+}
+
+function opensToAnon(raw) {
+  return grantRoles(raw).some((r) => OPEN_ROLES.has(r))
+}
+
+// Tables this repo explicitly puts out of anon's reach.
+function anonUnreachableTables(pairs) {
+  const revoked = new Set()
+  const regranted = new Set()
+  for (const { sql } of pairs) {
+    for (const m of sql.matchAll(REVOKE_RE)) {
+      if (coversSelect(m[1]) && opensToAnon(m[3])) revoked.add(normalizeTable(m[2]))
+    }
+    for (const m of sql.matchAll(GRANT_RE)) {
+      if (coversSelect(m[1]) && opensToAnon(m[3])) regranted.add(normalizeTable(m[2]))
+    }
+  }
+  // Migration order across files is not something this can resolve, so when a
+  // table is both revoked and granted the finding stands rather than being
+  // dropped on a guess.
+  for (const t of regranted) revoked.delete(t)
+  return revoked
 }
 
 rule({
@@ -989,16 +1047,25 @@ rule({
   severity: 'high',
   title: 'Policy has no TO clause, so it also answers anonymous requests',
   plain:
-    'A CREATE POLICY with no TO clause defaults to PUBLIC, which includes anon, and this ' +
-    'predicate does not depend on who is calling — so it matches rows for an unauthenticated ' +
-    'request too. Nothing is disabled and the policy reads correctly; the role it covers is just ' +
-    'wider than whoever wrote it assumed. Add `TO authenticated`.',
+    'A CREATE POLICY with no TO clause defaults to PUBLIC, which includes anon, this ' +
+    'predicate does not depend on who is calling, and nothing in this repo revokes anon\'s access ' +
+    'to the table — so it matches rows for an unauthenticated request too. Nothing is disabled and ' +
+    'the policy reads correctly; the role it covers is just wider than whoever wrote it assumed. ' +
+    'Add `TO authenticated`.',
   run(files) {
+    const pairs = sqlFiles(files)
+    const unreachable = anonUnreachableTables(pairs)
     const found = []
-    for (const { file, sql } of sqlFiles(files)) {
+    for (const { file, sql } of pairs) {
       for (const hit of matches(file, POLICY_HEAD)) {
         if (inComment(file, hit.match.index)) continue
-        const body = blockAt(sql, hit.match.index)
+        // Third condition: anon has to actually hold the table privilege for any
+        // of this to be reachable. See anonUnreachableTables above for why this
+        // suppresses on evidence rather than requiring it.
+        if (unreachable.has(normalizeTable(hit.match[3]))) continue
+        // The policy's own statement, not everything up to the next CREATE — see
+        // firstStatement for the GRANT that used to silence this.
+        const body = firstStatement(blockAt(sql, hit.match.index))
         if (/\bTO\s+[A-Za-z0-9_"]/i.test(body)) continue
         // A restrictive policy only ever narrows access, so a missing TO on one
         // cannot widen anything.
